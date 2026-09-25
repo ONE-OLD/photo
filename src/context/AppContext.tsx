@@ -37,16 +37,13 @@ interface ToastContextType {
   removeToast: (id: string) => void;
 }
 
-// Demo admin email - in production this would be checked against Firebase
+// Admin email — users registering with this email get the admin role
 const ADMIN_EMAIL = 'admin@lumina.com';
 
 // Auth Provider
 const AuthContext = createContext<AuthContextType | null>(null);
 const ThemeContext = createContext<ThemeContextType | null>(null);
 const ToastContext = createContext<ToastContextType | null>(null);
-
-// Demo mode detection
-const isDemoMode = !import.meta.env.VITE_FIREBASE_API_KEY || import.meta.env.VITE_FIREBASE_API_KEY === 'demo-api-key';
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -99,20 +96,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Auth state listener
   useEffect(() => {
-    if (isDemoMode) {
-      // In demo mode, check localStorage for saved user
-      const savedUser = localStorage.getItem('lumina-demo-user');
-      if (savedUser) {
-        const userData = JSON.parse(savedUser);
-        // Create a mock user object
-        const mockUser = { uid: userData.uid, email: userData.email } as User;
-        setUser(mockUser);
-        setProfile(userData.profile);
-      }
-      setLoading(false);
-      return;
-    }
-
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
@@ -128,51 +111,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
-    if (isDemoMode) {
-      // Demo mode login
-      const uid = 'demo-admin-uid';
-      const mockUser = { uid, email } as User;
-      const demoProfile: UserProfile = {
-        uid,
-        email,
-        name: 'Demo Photographer',
-        role: 'admin',
-        studioName: 'Lumina Studio',
-        createdAt: new Date().toISOString()
-      };
-      setUser(mockUser);
-      setProfile(demoProfile);
-      localStorage.setItem('lumina-demo-user', JSON.stringify({ uid, email, profile: demoProfile }));
-      return;
-    }
     const cred = await signInWithEmailAndPassword(auth, email, password);
     const userProfile = await database.getUserProfile(cred.user.uid);
     setProfile(userProfile);
   };
 
   const register = async (email: string, password: string, name: string) => {
-    if (isDemoMode) {
-      const uid = 'demo-admin-uid';
-      const mockUser = { uid, email } as User;
-      const demoProfile: UserProfile = {
-        uid,
-        email,
-        name,
-        role: email === ADMIN_EMAIL ? 'admin' : 'client',
-        studioName: name + "'s Studio",
-        createdAt: new Date().toISOString()
-      };
-      setUser(mockUser);
-      setProfile(demoProfile);
-      localStorage.setItem('lumina-demo-user', JSON.stringify({ uid, email, profile: demoProfile }));
-      return;
-    }
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     const newProfile: UserProfile = {
       uid: cred.user.uid,
       email,
       name,
       role: email === ADMIN_EMAIL ? 'admin' : 'client',
+      subscriptionPlan: 'free',
       createdAt: new Date().toISOString()
     };
     await database.createUserProfile(cred.user.uid, newProfile);
@@ -180,18 +131,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    if (isDemoMode) {
-      setUser(null);
-      setProfile(null);
-      localStorage.removeItem('lumina-demo-user');
-      return;
-    }
     await signOut(auth);
     setProfile(null);
   };
 
   const resetPassword = async (email: string) => {
-    if (isDemoMode) return;
     await sendPasswordResetEmail(auth, email);
   };
 

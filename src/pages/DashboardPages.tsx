@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth, useToast, useTheme } from '../context/AppContext';
-import { database, type Gallery, type Client, type Activity, type Album, type Photo } from '../services/database';
+import { database, formatRwf, MTN_MOMO_MERCHANT_CODE, MTN_MOMO_USSD_DIAL, type Gallery, type Client, type Activity, type Album, type Photo, type UserProfile, type PaymentRecord, type PlanId, type SubscriptionPlan } from '../services/database';
 import { Button, Input, Textarea, Select, Card, Badge, StatCard, PageHeader, SearchInput, Modal, ConfirmDialog, EmptyState, Spinner } from '../components/UI';
-import { Image, Users, Heart, FolderOpen, Plus, Edit, Trash2, Eye, EyeOff, Copy, ExternalLink, Share2, MoreVertical, Calendar, Clock, Archive, LayoutGrid, List, Lock, Shield, Camera } from 'lucide-react';
+import { Image, Users, Heart, FolderOpen, Plus, Edit, Trash2, Eye, EyeOff, Copy, ExternalLink, Share2, MoreVertical, Calendar, Clock, Archive, LayoutGrid, List, Lock, Shield, Camera, CreditCard, Smartphone } from 'lucide-react';
 
 // DASHBOARD OVERVIEW
 export function DashboardOverview() {
@@ -257,6 +257,7 @@ function CreateEditGalleryModal({ isOpen, onClose, onSaved, gallery }: { isOpen:
   const [eventDate, setEventDate] = useState(gallery?.eventDate || '');
   const [loading, setLoading] = useState(false);
   const { addToast } = useToast();
+  const { profile } = useAuth();
 
   useEffect(() => {
     if (gallery) {
@@ -282,12 +283,12 @@ function CreateEditGalleryModal({ isOpen, onClose, onSaved, gallery }: { isOpen:
         await database.updateGallery(gallery.id, { title, description, clientName, clientEmail, visibility, passwordProtected, password, allowDownloads, allowFavorites, allowComments, eventDate });
         addToast('Gallery updated', 'success');
       } else {
-        await database.createGallery({ title, description, clientName, clientEmail, visibility, passwordProtected, password, allowDownloads, allowFavorites, allowComments, eventDate, status: 'draft', coverImage: '' });
+        await database.createGallery({ title, description, clientName, clientEmail, visibility, passwordProtected, password, allowDownloads, allowFavorites, allowComments, eventDate, status: 'draft', coverImage: '' }, profile);
         addToast('Gallery created', 'success');
       }
       onSaved();
-    } catch {
-      addToast('Failed to save gallery', 'error');
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to save gallery', 'error');
     }
     setLoading(false);
   };
@@ -415,6 +416,7 @@ function CreateEditClientModal({ isOpen, onClose, client, onSaved }: { isOpen: b
   const [notes, setNotes] = useState(client?.notes || '');
   const [loading, setLoading] = useState(false);
   const { addToast } = useToast();
+  const { profile } = useAuth();
 
   useEffect(() => {
     if (client) { setName(client.name); setEmail(client.email); setPhone(client.phone || ''); setNotes(client.notes || ''); }
@@ -429,12 +431,12 @@ function CreateEditClientModal({ isOpen, onClose, client, onSaved }: { isOpen: b
         await database.updateClient(client.id, { name, email, phone, notes });
         addToast('Client updated', 'success');
       } else {
-        await database.createClient({ name, email, phone, notes });
+        await database.createClient({ name, email, phone, notes }, profile);
         addToast('Client added', 'success');
       }
       onSaved();
-    } catch {
-      addToast('Failed to save client', 'error');
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to save client', 'error');
     }
     setLoading(false);
   };
@@ -793,9 +795,7 @@ export function SettingsPage() {
                   <p className="text-xs text-[var(--text-muted)]">Image storage & optimization</p>
                 </div>
               </div>
-              <Badge variant={import.meta.env.VITE_CLOUDINARY_CLOUD_NAME && import.meta.env.VITE_CLOUDINARY_CLOUD_NAME !== 'demo' ? 'success' : 'warning'}>
-                {import.meta.env.VITE_CLOUDINARY_CLOUD_NAME && import.meta.env.VITE_CLOUDINARY_CLOUD_NAME !== 'demo' ? 'Connected' : 'Not configured'}
-              </Badge>
+              <Badge variant="success">Connected</Badge>
             </div>
             <div className="flex items-center justify-between p-4 rounded-xl border border-[var(--border-color)]">
               <div className="flex items-center gap-3">
@@ -807,9 +807,7 @@ export function SettingsPage() {
                   <p className="text-xs text-[var(--text-muted)]">Authentication & Database</p>
                 </div>
               </div>
-              <Badge variant={import.meta.env.VITE_FIREBASE_API_KEY && import.meta.env.VITE_FIREBASE_API_KEY !== 'demo-api-key' ? 'success' : 'warning'}>
-                {import.meta.env.VITE_FIREBASE_API_KEY && import.meta.env.VITE_FIREBASE_API_KEY !== 'demo-api-key' ? 'Connected' : 'Demo Mode'}
-              </Badge>
+              <Badge variant="success">Connected</Badge>
             </div>
           </div>
         </Card>
@@ -819,13 +817,38 @@ export function SettingsPage() {
 }
 
 // ADMIN PAGE
-export function AdminPage() {
+export function AdminPage({ onNavigate }: { onNavigate?: (page: string) => void }) {
   const { isAdmin, profile } = useAuth();
+  const { addToast } = useToast();
   const [stats, setStats] = useState<any>(null);
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [payments, setPayments] = useState<PaymentRecord[]>([]);
+  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [grantTarget, setGrantTarget] = useState<UserProfile | null>(null);
+  const [grantPlan, setGrantPlan] = useState<PlanId>('basic');
+  const [grantMonths, setGrantMonths] = useState('1');
+  const [grantNote, setGrantNote] = useState('');
+  const [grantBusy, setGrantBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    const [st, us, pays, pl] = await Promise.all([
+      database.getStats(),
+      database.getAllUsers(),
+      database.getPayments(),
+      database.getPlans(),
+    ]);
+    setStats(st);
+    setUsers(us as UserProfile[]);
+    setPayments(pays);
+    setPlans(pl);
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
-    database.getStats().then(setStats);
-  }, []);
+    if (isAdmin) load();
+    else setLoading(false);
+  }, [isAdmin, load]);
 
   if (!isAdmin) {
     return (
@@ -834,17 +857,164 @@ export function AdminPage() {
       </div>
     );
   }
+  if (loading) return <Spinner />;
+
+  const planName = (id?: string) => plans.find(p => p.id === id)?.name || 'Free';
+  const isExpired = (u: UserProfile) => {
+    if (!u.subscriptionPlan || u.subscriptionPlan === 'free') return false;
+    return !!u.subscriptionExpiresAt && new Date(u.subscriptionExpiresAt).getTime() < Date.now();
+  };
+
+  const handleConfirmPayment = async (pay: PaymentRecord, status: 'confirmed' | 'rejected') => {
+    try {
+      await database.setPaymentStatus(pay.id, status);
+      if (status === 'confirmed') {
+        // Activating the plan immediately for the payer (1 month by default)
+        await database.grantSubscription(profile!.uid, pay.userId, pay.planId, 1, `MoMo payment ${pay.reference || pay.id}`);
+      }
+      addToast(status === 'confirmed' ? `Payment confirmed — ${pay.planName} activated` : 'Payment rejected', status === 'confirmed' ? 'success' : 'info');
+      load();
+    } catch {
+      addToast('Failed to update payment', 'error');
+    }
+  };
+
+  const handleGrant = async () => {
+    if (!grantTarget || !profile) return;
+    setGrantBusy(true);
+    try {
+      const months = grantPlan === 'free' ? 0 : Math.max(0, Number(grantMonths) || 0);
+      await database.grantSubscription(profile.uid, grantTarget.uid, grantPlan, months, grantNote.trim() || undefined);
+      addToast(`${planName(grantPlan)} plan granted to ${grantTarget.email}`, 'success');
+      setGrantTarget(null);
+      setGrantNote('');
+      load();
+    } catch {
+      addToast('Failed to grant subscription', 'error');
+    }
+    setGrantBusy(false);
+  };
+
+  const pendingPayments = payments.filter(p => p.status === 'pending');
 
   return (
     <div className="animate-fade-in">
-      <PageHeader title="Admin Panel" description="Platform administration and system settings" />
-      
+      <PageHeader
+        title="Admin Panel"
+        description="Manage photographers, subscriptions and MTN MoMo payments"
+        action={<Button variant="secondary" onClick={() => onNavigate?.('pricing')}>Manage Pricing</Button>}
+      />
+
+      <Card className="p-4 mb-6 border-yellow-500/40 bg-yellow-500/5">
+        <div className="flex items-center gap-3 text-sm text-[var(--text-secondary)]">
+          <Smartphone size={16} className="text-yellow-500 flex-shrink-0" />
+          Photographers pay manually via MTN MoMo merchant code <span className="font-mono font-bold text-[var(--text-primary)]">{MTN_MOMO_MERCHANT_CODE}</span> (dial <span className="font-mono font-bold text-[var(--text-primary)]">{MTN_MOMO_USSD_DIAL}</span>). Verify the payment in your MoMo statement, then confirm it below or grant a plan manually.
+        </div>
+      </Card>
+
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard title="Total Users" value={stats?.totalClients || 0} icon={<Users size={20} />} />
+        <StatCard title="Photographers" value={users.length} icon={<Users size={20} />} />
         <StatCard title="Total Galleries" value={stats?.totalGalleries || 0} icon={<Image size={20} />} />
         <StatCard title="Total Photos" value={stats?.totalPhotos || 0} icon={<FolderOpen size={20} />} />
-        <StatCard title="Total Favorites" value={stats?.totalFavorites || 0} icon={<Heart size={20} />} />
+        <StatCard title="Pending Payments" value={pendingPayments.length} icon={<CreditCard size={20} />} />
       </div>
+
+      {/* Pending MoMo payments */}
+      <Card className="p-6 mb-8">
+        <h3 className="font-semibold text-[var(--text-primary)] mb-4">MoMo Payment Requests</h3>
+        {payments.length === 0 ? (
+          <p className="text-sm text-[var(--text-muted)]">No payments reported yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border-color)]">
+                  <th className="py-2 pr-4 font-medium">Date</th>
+                  <th className="py-2 pr-4 font-medium">User</th>
+                  <th className="py-2 pr-4 font-medium">Plan</th>
+                  <th className="py-2 pr-4 font-medium">Amount</th>
+                  <th className="py-2 pr-4 font-medium">Paid From</th>
+                  <th className="py-2 pr-4 font-medium">Reference</th>
+                  <th className="py-2 pr-4 font-medium">Status</th>
+                  <th className="py-2 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map(p => (
+                  <tr key={p.id} className="border-b border-[var(--border-color)] last:border-0">
+                    <td className="py-2.5 pr-4 text-[var(--text-secondary)] whitespace-nowrap">{new Date(p.createdAt).toLocaleString()}</td>
+                    <td className="py-2.5 pr-4 text-[var(--text-primary)]">{p.userEmail}</td>
+                    <td className="py-2.5 pr-4 text-[var(--text-secondary)]">{p.planName}</td>
+                    <td className="py-2.5 pr-4 text-[var(--text-secondary)] whitespace-nowrap">{formatRwf(p.amountRwf)}</td>
+                    <td className="py-2.5 pr-4 text-[var(--text-muted)] font-mono text-xs">{p.payerNumber || '—'}</td>
+                    <td className="py-2.5 pr-4 text-[var(--text-muted)] font-mono text-xs">{p.reference || '—'}</td>
+                    <td className="py-2.5 pr-4"><Badge variant={p.status === 'confirmed' ? 'success' : p.status === 'rejected' ? 'danger' : 'warning'}>{p.status}</Badge></td>
+                    <td className="py-2.5">
+                      {p.status === 'pending' && (
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={() => handleConfirmPayment(p, 'confirmed')}>Confirm</Button>
+                          <Button size="sm" variant="ghost" onClick={() => handleConfirmPayment(p, 'rejected')}>Reject</Button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Photographer accounts & subscriptions */}
+      <Card className="p-6 mb-8">
+        <h3 className="font-semibold text-[var(--text-primary)] mb-4">Photographer Accounts & Subscriptions</h3>
+        {users.length === 0 ? (
+          <p className="text-sm text-[var(--text-muted)]">No user profiles yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border-color)]">
+                  <th className="py-2 pr-4 font-medium">Name</th>
+                  <th className="py-2 pr-4 font-medium">Email</th>
+                  <th className="py-2 pr-4 font-medium">Role</th>
+                  <th className="py-2 pr-4 font-medium">Plan</th>
+                  <th className="py-2 pr-4 font-medium">Storage / Clients</th>
+                  <th className="py-2 pr-4 font-medium">Expires</th>
+                  <th className="py-2 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map(u => {
+                  const plan = plans.find(p => p.id === (u.subscriptionPlan || 'free')) || plans.find(p => p.id === 'free');
+                  const expired = isExpired(u);
+                  return (
+                    <tr key={u.uid} className="border-b border-[var(--border-color)] last:border-0">
+                      <td className="py-2.5 pr-4 text-[var(--text-primary)] font-medium">{u.name || u.studioName || '—'}</td>
+                      <td className="py-2.5 pr-4 text-[var(--text-secondary)]">{u.email}</td>
+                      <td className="py-2.5 pr-4"><Badge variant={u.role === 'admin' ? 'info' : 'default'}>{u.role}</Badge></td>
+                      <td className="py-2.5 pr-4">
+                        <Badge variant={expired ? 'danger' : (u.subscriptionPlan && u.subscriptionPlan !== 'free') ? 'success' : 'default'}>
+                          {plan?.name || 'Free'}{expired ? ' (expired)' : ''}
+                        </Badge>
+                      </td>
+                      <td className="py-2.5 pr-4 text-[var(--text-muted)] whitespace-nowrap">{plan?.storageGb ?? 1} GB / {plan && plan.maxClients < 0 ? '∞' : plan?.maxClients ?? 5}</td>
+                      <td className="py-2.5 pr-4 text-[var(--text-muted)] whitespace-nowrap">
+                        {u.subscriptionPlan && u.subscriptionPlan !== 'free' && u.subscriptionExpiresAt ? new Date(u.subscriptionExpiresAt).toLocaleDateString() : '—'}
+                      </td>
+                      <td className="py-2.5">
+                        <Button size="sm" variant="secondary" onClick={() => { setGrantTarget(u); setGrantPlan((u.subscriptionPlan as PlanId) || 'free'); }}>
+                          Manage Plan
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
 
       <Card className="p-6">
         <h3 className="font-semibold text-[var(--text-primary)] mb-4">System Information</h3>
@@ -866,19 +1036,38 @@ export function AdminPage() {
             <span className="text-[var(--text-primary)]">Cloudinary</span>
           </div>
           <div className="flex justify-between py-2">
-            <span className="text-[var(--text-muted)]">Mode</span>
-            <Badge variant={import.meta.env.VITE_FIREBASE_API_KEY && import.meta.env.VITE_FIREBASE_API_KEY !== 'demo-api-key' ? 'success' : 'warning'}>
-              {import.meta.env.VITE_FIREBASE_API_KEY && import.meta.env.VITE_FIREBASE_API_KEY !== 'demo-api-key' ? 'Production' : 'Demo'}
-            </Badge>
+            <span className="text-[var(--text-muted)]">Payments</span>
+            <span className="text-[var(--text-primary)]">MTN MoMo (merchant {MTN_MOMO_MERCHANT_CODE})</span>
           </div>
         </div>
       </Card>
+
+      {/* Grant / change subscription modal */}
+      <Modal isOpen={!!grantTarget} onClose={() => setGrantTarget(null)} title={`Manage subscription — ${grantTarget?.email || ''}`}>
+        <div className="p-6 space-y-5">
+          <Select
+            label="Plan"
+            value={grantPlan}
+            onChange={e => setGrantPlan(e.target.value as PlanId)}
+            options={plans.map(p => ({ value: p.id, label: `${p.name} — ${p.storageGb} GB, ${p.maxClients < 0 ? 'unlimited' : p.maxClients} clients (${p.priceRwf === 0 ? 'Free' : formatRwf(p.priceRwf)}/mo)` }))}
+          />
+          {grantPlan !== 'free' && (
+            <Input label="Duration (months, 0 = no expiry)" type="number" min={0} step={1} value={grantMonths} onChange={e => setGrantMonths(e.target.value)} />
+          )}
+          <Input label="Note (optional)" value={grantNote} onChange={e => setGrantNote(e.target.value)} placeholder="e.g. MoMo ref RCID..." />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={() => setGrantTarget(null)}>Cancel</Button>
+            <Button onClick={handleGrant} loading={grantBusy}>Apply Subscription</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
 
 // GALLERY EDITOR PAGE
 export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; onBack: () => void }) {
+  const { profile: profileRef } = useAuth();
   const [gallery, setGallery] = useState<Gallery | null>(null);
   const [albums, setAlbums] = useState<Album[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -914,41 +1103,23 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
   const handleUploadPhotos = async (files: FileList) => {
     const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
     const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-    
-    if (!cloudName || !uploadPreset || cloudName === 'demo') {
-      // Demo mode - simulate upload
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const url = URL.createObjectURL(file);
-        await database.addPhoto({
-          galleryId,
-          albumId: selectedAlbum || albums[0]?.id || '',
-          publicId: `demo_${Date.now()}_${i}`,
-          secureUrl: url,
-          thumbnailUrl: url,
-          width: 1200,
-          height: 800,
-          format: file.type.split('/')[1] || 'jpg',
-          bytes: file.size,
-        });
-      }
-      addToast(`${files.length} photo(s) uploaded`, 'success');
-      const p = await database.getPhotosByGallery(galleryId);
-      setPhotos(p as Photo[]);
+
+    if (!cloudName || !uploadPreset) {
+      addToast('Cloudinary is not configured. Set VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET.', 'error');
       return;
     }
 
-    // Real Cloudinary upload
+    let uploaded = 0;
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const formData = new FormData();
       formData.append('file', file);
       formData.append('upload_preset', uploadPreset);
-      
+
       try {
         const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: 'POST', body: formData });
         const data = await res.json();
-        
+
         await database.addPhoto({
           galleryId,
           albumId: selectedAlbum || albums[0]?.id || '',
@@ -959,12 +1130,17 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
           height: data.height,
           format: data.format,
           bytes: data.bytes,
-        });
-      } catch (err) {
+        }, profileRef);
+        uploaded++;
+      } catch (err: any) {
+        if (err?.name === 'QuotaError') {
+          addToast(err.message, 'error');
+          break;
+        }
         addToast(`Failed to upload ${file.name}`, 'error');
       }
     }
-    addToast(`${files.length} photo(s) uploaded`, 'success');
+    if (uploaded > 0) addToast(`${uploaded} photo(s) uploaded`, 'success');
     const p = await database.getPhotosByGallery(galleryId);
     setPhotos(p as Photo[]);
   };
