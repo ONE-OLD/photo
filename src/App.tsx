@@ -146,7 +146,7 @@ function App() {
       <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)]">
         <div className="text-center">
           <img src="/lumina-logo.jpg" alt="" className="w-12 h-12 mx-auto mb-4 rounded-xl object-contain animate-pulse-soft" />
-          <p className="text-sm text-[var(--text-muted)]">Loading Lumina...</p>
+          <p className="text-sm text-[var(--text-muted)]">Loading Kigalipix...</p>
         </div>
       </div>
     );

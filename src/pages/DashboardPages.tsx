@@ -1199,7 +1199,7 @@ export function AdminPage({ onNavigate }: { onNavigate?: (page: string) => void 
         <div className="space-y-3 text-sm">
           <div className="flex justify-between py-2 border-b border-[var(--border-color)]">
             <span className="text-[var(--text-muted)]">Platform</span>
-            <span className="text-[var(--text-primary)]">Lumina v1.0.0</span>
+            <span className="text-[var(--text-primary)]">Kigalipix v1.0.0</span>
           </div>
           <div className="flex justify-between py-2 border-b border-[var(--border-color)]">
             <span className="text-[var(--text-muted)]">Admin Email</span>

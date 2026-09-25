@@ -1,4 +1,4 @@
-# Lumina — Photography Client Gallery Platform
+# Kigalipix — Photography Client Gallery Platform
 
 A professional, full-stack photography platform for managing client galleries, delivering photos, and building your photography business.
 

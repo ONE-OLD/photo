@@ -271,7 +271,7 @@ export function DashboardSidebar({ currentPage, onNavigate, mobileOpen, onCloseM
         <div className="flex items-center gap-3">
           <img src="/lumina-logo.jpg" alt="" className="w-9 h-9 rounded-lg object-contain" />
           <div>
-            <h1 className="font-semibold text-[var(--text-primary)] text-sm">Lumina</h1>
+            <h1 className="font-semibold text-[var(--text-primary)] text-sm">Kigalipix</h1>
             <p className="text-xs text-[var(--text-muted)]">{profile?.studioName || 'Studio'}</p>
           </div>
         </div>

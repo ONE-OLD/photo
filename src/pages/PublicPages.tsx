@@ -13,7 +13,7 @@ function PublicNav() {
         <div className="flex items-center justify-between h-16">
           <Link to="/" className="flex items-center gap-2">
             <img src="/lumina-logo.jpg" alt="" className="w-8 h-8 rounded-lg object-contain" />
-            <span className="font-bold text-lg text-[var(--text-primary)]">Lumina</span>
+            <span className="font-bold text-lg text-[var(--text-primary)]">Kigalipix</span>
           </Link>
           <div className="hidden md:flex items-center gap-8">
             <Link to="/features" className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">Features</Link>
@@ -54,7 +54,7 @@ function Footer() {
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-2 mb-4">
               <img src="/lumina-logo.jpg" alt="" className="w-8 h-8 rounded-lg object-contain" />
-              <span className="font-bold text-lg">Lumina</span>
+              <span className="font-bold text-lg">Kigalipix</span>
             </div>
             <p className="text-sm text-[var(--text-muted)]">Professional photography gallery platform for delivering stunning client experiences.</p>
           </div>
@@ -81,7 +81,7 @@ function Footer() {
           </div>
         </div>
         <div className="mt-10 pt-6 border-t border-[var(--border-color)] text-center text-sm text-[var(--text-muted)]">
-          © {new Date().getFullYear()} Lumina. All rights reserved.
+          © {new Date().getFullYear()} Kigalipix. All rights reserved.
         </div>
       </div>
     </footer>
@@ -274,19 +274,19 @@ export function AboutPage() {
       <section className="pt-32 pb-20 px-4">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-16">
-            <h1 className="text-4xl sm:text-5xl font-bold text-[var(--text-primary)] mb-4">About Lumina</h1>
+            <h1 className="text-4xl sm:text-5xl font-bold text-[var(--text-primary)] mb-4">About Kigalipix</h1>
             <p className="text-lg text-[var(--text-secondary)]">We're building the future of photography delivery.</p>
           </div>
           <div className="prose prose-lg max-w-none">
             <div className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-2xl p-8 sm:p-12">
               <p className="text-[var(--text-secondary)] mb-6">
-                Lumina was created with a simple mission: to help photographers deliver their work beautifully. We understand that your photographs are more than just images — they're stories, memories, and art.
+                Kigalipix was created with a simple mission: to help photographers deliver their work beautifully. We understand that your photographs are more than just images — they're stories, memories, and art.
               </p>
               <p className="text-[var(--text-secondary)] mb-6">
                 Our platform provides photographers with professional-grade tools for managing client galleries, organizing photos into albums, and sharing stunning collections with clients through secure, password-protected links.
               </p>
               <p className="text-[var(--text-secondary)]">
-                From independent photographers to established studios, Lumina scales with your business. We handle the technical complexity so you can focus on what matters most — creating beautiful photography.
+                From independent photographers to established studios, Kigalipix scales with your business. We handle the technical complexity so you can focus on what matters most — creating beautiful photography.
               </p>
             </div>
             <div className="grid sm:grid-cols-3 gap-6 mt-10">
@@ -376,7 +376,7 @@ export function LoginPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-6">
-            <img src="/lumina-logo.jpg" alt="Lumina" className="w-10 h-10 rounded-xl object-contain" />
+            <img src="/lumina-logo.jpg" alt="Kigalipix" className="w-10 h-10 rounded-xl object-contain" />
           </Link>
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">Welcome back</h1>
           <p className="text-[var(--text-muted)] mt-1">Sign in to your account</p>
@@ -432,7 +432,7 @@ export function RegisterPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-6">
-            <img src="/lumina-logo.jpg" alt="Lumina" className="w-10 h-10 rounded-xl object-contain" />
+            <img src="/lumina-logo.jpg" alt="Kigalipix" className="w-10 h-10 rounded-xl object-contain" />
           </Link>
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">Create your account</h1>
           <p className="text-[var(--text-muted)] mt-1">Start delivering beautiful galleries</p>
@@ -476,7 +476,7 @@ export function ForgotPasswordPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-6">
-            <img src="/lumina-logo.jpg" alt="Lumina" className="w-10 h-10 rounded-xl object-contain" />
+            <img src="/lumina-logo.jpg" alt="Kigalipix" className="w-10 h-10 rounded-xl object-contain" />
           </Link>
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">Reset Password</h1>
           <p className="text-[var(--text-muted)] mt-1">Enter your email to receive a reset link</p>
@@ -514,7 +514,7 @@ export function PrivacyPage() {
           <h1 className="text-4xl font-bold text-[var(--text-primary)] mb-8">Privacy Policy</h1>
           <div className="prose text-[var(--text-secondary)] space-y-4">
             <p>Last updated: {new Date().toLocaleDateString()}</p>
-            <p>Lumina ("we", "our", or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, and safeguard your information when you use our photography gallery platform.</p>
+            <p>Kigalipix ("we", "our", or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, and safeguard your information when you use our photography gallery platform.</p>
             <h2 className="text-xl font-semibold text-[var(--text-primary)] mt-8">Information We Collect</h2>
             <p>We collect information you provide directly, including your name, email address, and photographs you upload to our platform. We also collect usage data to improve our services.</p>
             <h2 className="text-xl font-semibold text-[var(--text-primary)] mt-8">How We Use Your Information</h2>
@@ -541,7 +541,7 @@ export function TermsPage() {
           <h1 className="text-4xl font-bold text-[var(--text-primary)] mb-8">Terms of Service</h1>
           <div className="prose text-[var(--text-secondary)] space-y-4">
             <p>Last updated: {new Date().toLocaleDateString()}</p>
-            <p>By using Lumina, you agree to these Terms of Service. Please read them carefully.</p>
+            <p>By using Kigalipix, you agree to these Terms of Service. Please read them carefully.</p>
             <h2 className="text-xl font-semibold text-[var(--text-primary)] mt-8">Use of Service</h2>
             <p>You may use our service for lawful purposes only. You are responsible for the content you upload and share through the platform. You must have the rights to any photographs you upload.</p>
             <h2 className="text-xl font-semibold text-[var(--text-primary)] mt-8">Account Responsibility</h2>
