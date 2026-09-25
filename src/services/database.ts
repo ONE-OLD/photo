@@ -168,7 +168,8 @@ export const database = {
     }
     const userRef = ref(db, `users/${uid}`);
     await update(userRef, data);
-    return { ...demoData.users?.[uid], ...data };
+    const snapshot = await get(userRef);
+    return snapshot.val();
   },
 
   // Client operations
@@ -206,7 +207,8 @@ export const database = {
     }
     const clientRef = ref(db, `clients/${id}`);
     await update(clientRef, data);
-    return { ...demoData.clients[id], ...data };
+    const snapshot = await get(clientRef);
+    return snapshot.val();
   },
 
   async deleteClient(id: string) {
@@ -257,23 +259,53 @@ export const database = {
     }
     const galleryRef = ref(db, `galleries/${id}`);
     await update(galleryRef, { ...data, updatedAt: new Date().toISOString() });
-    return { ...demoData.galleries[id], ...data };
+    const snapshot = await get(galleryRef);
+    return snapshot.val();
   },
 
   async deleteGallery(id: string) {
     if (isDemoMode) {
       delete demoData.galleries[id];
-      // Also delete related albums and photos
+      // Also delete related albums, photos, favorites and comments
       Object.keys(demoData.albums).forEach(aid => {
         if (demoData.albums[aid].galleryId === id) delete demoData.albums[aid];
       });
       Object.keys(demoData.photos).forEach(pid => {
         if (demoData.photos[pid].galleryId === id) delete demoData.photos[pid];
       });
+      Object.keys(demoData.favorites).forEach(fid => {
+        if (demoData.favorites[fid].galleryId === id) delete demoData.favorites[fid];
+      });
+      Object.keys(demoData.comments).forEach(cid => {
+        if (demoData.comments[cid].galleryId === id) delete demoData.comments[cid];
+      });
       notifyListeners('galleries');
       return;
     }
     await remove(ref(db, `galleries/${id}`));
+    // Cascade-delete related data in the remote database as well
+    const [albums, photos] = await Promise.all([
+      get(ref(db, 'albums')),
+      get(ref(db, 'photos')),
+    ]);
+    const updates: Record<string, null> = {};
+    if (albums.val()) Object.keys(albums.val()).forEach(aid => {
+      if (albums.val()[aid].galleryId === id) updates[`albums/${aid}`] = null;
+    });
+    if (photos.val()) Object.keys(photos.val()).forEach(pid => {
+      if (photos.val()[pid].galleryId === id) updates[`photos/${pid}`] = null;
+    });
+    const [favorites, comments] = await Promise.all([
+      get(ref(db, 'favorites')),
+      get(ref(db, 'comments')),
+    ]);
+    if (favorites.val()) Object.keys(favorites.val()).forEach(fid => {
+      if (favorites.val()[fid].galleryId === id) updates[`favorites/${fid}`] = null;
+    });
+    if (comments.val()) Object.keys(comments.val()).forEach(cid => {
+      if (comments.val()[cid].galleryId === id) updates[`comments/${cid}`] = null;
+    });
+    if (Object.keys(updates).length > 0) await update(ref(db), updates);
   },
 
   // Album operations
@@ -305,7 +337,8 @@ export const database = {
     }
     const albumRef = ref(db, `albums/${id}`);
     await update(albumRef, data);
-    return { ...demoData.albums[id], ...data };
+    const snapshot = await get(albumRef);
+    return snapshot.val();
   },
 
   async deleteAlbum(id: string) {
@@ -318,6 +351,15 @@ export const database = {
       return;
     }
     await remove(ref(db, `albums/${id}`));
+    // Cascade-delete the album's photos from the remote database as well
+    const photosSnap = await get(ref(db, 'photos'));
+    if (photosSnap.val()) {
+      const updates: Record<string, null> = {};
+      Object.keys(photosSnap.val()).forEach(pid => {
+        if (photosSnap.val()[pid].albumId === id) updates[`photos/${pid}`] = null;
+      });
+      if (Object.keys(updates).length > 0) await update(ref(db), updates);
+    }
   },
 
   // Photo operations
@@ -392,6 +434,14 @@ export const database = {
       f.galleryId === galleryId && (!clientEmail || f.clientEmail === clientEmail)
     );
   },
+
+  async getFavoriteCounts(galleryId: string): Promise<Record<string, number>> {
+    const favs = await this.getFavorites(galleryId);
+    const counts: Record<string, number> = {};
+    (favs as Favorite[]).forEach(f => { counts[f.photoId] = (counts[f.photoId] || 0) + 1; });
+    return counts;
+  },
+
 
   // Comments
   async addComment(comment: Omit<Comment, 'id' | 'createdAt'>) {
@@ -468,7 +518,8 @@ export const database = {
     }
     const settingsRef = ref(db, 'settings');
     await update(settingsRef, data);
-    return { ...demoData.settings, ...data };
+    const snapshot = await get(settingsRef);
+    return snapshot.val() || {};
   },
 
   // Realtime listeners
