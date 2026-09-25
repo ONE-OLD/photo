@@ -120,7 +120,13 @@ export function GalleriesPage({ onEditGallery }: { onEditGallery: (id: string) =
     setLoading(false);
   }, []);
 
-  useEffect(() => { loadGalleries(); }, [loadGalleries]);
+  // Open the gallery editor when an "edit" action is requested from the list
+  useEffect(() => {
+    if (editingGallery) {
+      onEditGallery(editingGallery.id);
+      setEditingGallery(null);
+    }
+  }, [editingGallery, onEditGallery]);
 
   const filtered = galleries.filter(g => {
     const matchSearch = g.title.toLowerCase().includes(search.toLowerCase()) || (g.clientName || '').toLowerCase().includes(search.toLowerCase());
