@@ -1,6 +1,6 @@
 import React, { useState, useEffect, type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes } from 'react';
 import { useTheme, useToast, useAuth } from '../context/AppContext';
-import { X, Check, AlertCircle, Info, AlertTriangle, Moon, Sun, Monitor, Menu, LogOut, Camera, LayoutDashboard, Image, Users, Settings, Shield, Heart, Activity, FolderOpen } from 'lucide-react';
+import { X, Check, AlertCircle, Info, AlertTriangle, Moon, Sun, Monitor, Menu, LogOut, Camera, LayoutDashboard, Image, Users, Settings, Shield, Heart, Activity, FolderOpen, CreditCard } from 'lucide-react';
 
 // Button Component
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -259,6 +259,7 @@ export function DashboardSidebar({ currentPage, onNavigate, mobileOpen, onCloseM
     { id: 'albums', label: 'Albums', icon: <FolderOpen size={18} /> },
     { id: 'favorites', label: 'Favorites', icon: <Heart size={18} /> },
     { id: 'activity', label: 'Activity', icon: <Activity size={18} /> },
+    { id: 'subscription', label: 'Subscription', icon: <CreditCard size={18} /> },
     { id: 'settings', label: 'Settings', icon: <Settings size={18} /> },
     { id: 'admin', label: 'Admin', icon: <Shield size={18} /> },
   ];

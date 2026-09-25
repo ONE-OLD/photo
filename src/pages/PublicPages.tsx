@@ -402,9 +402,6 @@ export function LoginPage() {
           <div className="mt-6 text-center text-sm text-[var(--text-muted)]">
             Don't have an account? <Link to="/register" className="text-[var(--accent)] hover:underline font-medium">Sign up</Link>
           </div>
-          <div className="mt-4 p-3 rounded-lg bg-[var(--bg-tertiary)] text-xs text-[var(--text-muted)] text-center">
-            Demo: Use any email & password to sign in
-          </div>
         </div>
       </div>
     </div>

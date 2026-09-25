@@ -5,7 +5,7 @@ import { ToastContainer, Spinner, DashboardSidebar, DashboardHeader } from './co
 import { HomePage, FeaturesPage, PricingPage, AboutPage, ContactPage, LoginPage, RegisterPage, ForgotPasswordPage, PrivacyPage, TermsPage } from './pages/PublicPages';
 import { DashboardOverview, GalleriesPage, ClientsPage, AlbumsPage, FavoritesPage, ActivityPage, SettingsPage, AdminPage, GalleryEditorPage } from './pages/DashboardPages';
 import { ClientGalleryPage } from './pages/ClientGallery';
-import { seedDemoData } from './utils/seedDemo';
+import { SubscriptionPage, AdminPricingPage } from './pages/SubscriptionPages';
 
 // Protected Route
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -17,10 +17,29 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 // Dashboard Layout
 function DashboardLayout() {
-  const [currentPage, setCurrentPage] = useState('overview');
+  const [currentPage, setCurrentPage] = useState(() => {
+    const st = window.history.state as any;
+    return (st?.luminaPage as string) || 'overview';
+  });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [editingGalleryId, setEditingGalleryId] = useState<string | null>(null);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Keep page in sync when navigating with browser back/forward
+  useEffect(() => {
+    const st = window.history.state as any;
+    if (st?.luminaPage) {
+      setCurrentPage(st.luminaPage);
+      if (st.luminaPage !== 'gallery-editor') setEditingGalleryId(null);
+    }
+  }, [location.key]);
+
+  const goToPage = (page: string) => {
+    setCurrentPage(page);
+    setEditingGalleryId(page === 'gallery-editor' ? editingGalleryId : null);
+    navigate('/dashboard', { state: { luminaPage: page } });
+  };
 
   const pageTitle: Record<string, string> = {
     overview: 'Dashboard',
@@ -29,13 +48,15 @@ function DashboardLayout() {
     albums: 'Albums',
     favorites: 'Favorites',
     activity: 'Activity',
+    subscription: 'Subscription',
     settings: 'Settings',
     admin: 'Admin',
+    pricing: 'Pricing Management',
   };
 
   const handleEditGallery = (id: string) => {
     setEditingGalleryId(id);
-    setCurrentPage('gallery-editor');
+    goToPage('gallery-editor');
   };
 
   const renderPage = () => {
@@ -49,8 +70,10 @@ function DashboardLayout() {
       case 'albums': return <AlbumsPage />;
       case 'favorites': return <FavoritesPage />;
       case 'activity': return <ActivityPage />;
+      case 'subscription': return <SubscriptionPage />;
       case 'settings': return <SettingsPage />;
-      case 'admin': return <AdminPage />;
+      case 'admin': return <AdminPage onNavigate={goToPage} />;
+      case 'pricing': return <AdminPricingPage />;
       default: return <DashboardOverview />;
     }
   };
@@ -59,7 +82,7 @@ function DashboardLayout() {
     <div className="flex min-h-screen bg-[var(--bg-secondary)]">
       <DashboardSidebar 
         currentPage={currentPage} 
-        onNavigate={(page) => { setCurrentPage(page); setEditingGalleryId(null); }}
+        onNavigate={goToPage}
         mobileOpen={mobileMenuOpen}
         onCloseMobile={() => setMobileMenuOpen(false)}
       />
@@ -108,18 +131,8 @@ function App() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const initializeApp = async () => {
-      try {
-        const isDemoMode = !import.meta.env.VITE_FIREBASE_API_KEY || import.meta.env.VITE_FIREBASE_API_KEY === 'demo-api-key';
-        if (isDemoMode) await seedDemoData();
-      } catch (error) {
-        console.error('App initialization failed:', error);
-      } finally {
-        setReady(true);
-      }
-    };
-
-    initializeApp();
+    // Firebase & Cloudinary are configured via environment variables — no local/demo data
+    setReady(true);
   }, []);
 
   if (!ready) {
