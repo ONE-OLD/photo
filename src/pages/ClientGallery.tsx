@@ -11,6 +11,7 @@ export function ClientGalleryPage() {
   const [albums, setAlbums] = useState<Album[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [password, setPassword] = useState('');
   const [authorized, setAuthorized] = useState(false);
   const [passwordError, setPasswordError] = useState('');
@@ -28,36 +29,33 @@ export function ClientGalleryPage() {
 
   useEffect(() => {
     const load = async () => {
-      if (!galleryId) return;
-      const g = await database.getGallery(galleryId);
-      if (!g) { setLoading(false); return; }
-      setGallery(g as Gallery);
+      try {
+        if (!galleryId) return;
+        const g = await database.getGallery(galleryId);
+        if (!g) return;
+        setGallery(g as Gallery);
 
-      // Check if gallery is accessible
-      const gal = g as Gallery;
-      if (gal.status !== 'published') {
+        const gal = g as Gallery;
+        if (gal.status !== 'published') return;
+        if (gal.expirationDate && new Date(gal.expirationDate) < new Date()) return;
+        if (!gal.passwordProtected) {
+          setAuthorized(true);
+          const [a, p] = await Promise.all([
+            database.getAlbumsByGallery(galleryId),
+            database.getPhotosByGallery(galleryId),
+          ]);
+          setAlbums(a as Album[]);
+          setPhotos(p as Photo[]);
+          if ((a as Album[]).length > 0) setSelectedAlbum((a as Album[])[0].id);
+
+          const favs = await database.getFavorites(galleryId);
+          setFavorites((favs as any[]).filter(f => f.clientEmail === clientEmail).map(f => f.photoId));
+        }
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : 'Failed to load this gallery.');
+      } finally {
         setLoading(false);
-        return;
       }
-      if (gal.expirationDate && new Date(gal.expirationDate) < new Date()) {
-        setLoading(false);
-        return;
-      }
-      if (!gal.passwordProtected) {
-        setAuthorized(true);
-        const [a, p] = await Promise.all([
-          database.getAlbumsByGallery(galleryId),
-          database.getPhotosByGallery(galleryId),
-        ]);
-        setAlbums(a as Album[]);
-        setPhotos(p as Photo[]);
-        if ((a as Album[]).length > 0) setSelectedAlbum((a as Album[])[0].id);
-        
-        // Load favorites
-        const favs = await database.getFavorites(galleryId);
-        setFavorites((favs as any[]).filter(f => f.clientEmail === clientEmail).map(f => f.photoId));
-      }
-      setLoading(false);
     };
     load();
   }, [galleryId]);
@@ -149,6 +147,16 @@ export function ClientGalleryPage() {
     return (
       <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center">
         <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center px-4">
+        <div role="alert" className="max-w-md text-center text-sm text-red-600 dark:text-red-400">
+          Could not load this gallery: {loadError}
+        </div>
       </div>
     );
   }

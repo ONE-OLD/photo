@@ -94,6 +94,16 @@ cp .env.example .env
 2. Create an unsigned upload preset
 3. Add your cloud name and upload preset to `.env`
 
+#### Account Security and Deletion
+Account deletion uses a Firebase Callable Function to delete the photographer's Cloudinary images, Realtime Database records, and Firebase Authentication account. Cloud Functions deployment requires a Firebase project on the Blaze plan. Do not put the Cloudinary API key or secret in the frontend `.env` file.
+
+1. Install the Firebase CLI and select the Firebase project: `firebase use photographers-9690c`.
+2. From the `functions` directory, run `npm install`.
+3. Set `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` with `firebase functions:secrets:set <SECRET_NAME>`. Enter each value directly in the terminal prompt.
+4. Deploy with `firebase deploy --only functions`. On first deploy, provide the `DATABASE_URL` parameter using the Realtime Database URL from `.env.example`.
+
+Existing records must be backfilled with the correct `ownerUid` before deletion can remove them. The function deletes records and images tied to owned galleries and does not guess ownership for legacy records without an owner.
+
 ### Demo Mode
 
 The app works without any configuration! Simply run:
@@ -120,53 +130,120 @@ The output will be in the `dist/` directory.
 
 Recommended security rules for your Firebase Realtime Database:
 
+Photographer-owned records in `clients`, `galleries`, `albums`, `photos`, `favorites`, `comments`, and `activity` must include an `ownerUid` equal to the photographer's Firebase Auth UID. Existing records created before ownership was added must be backfilled to their actual owners using a trusted Admin SDK migration before publishing these rules. Records without `ownerUid` will not appear in photographer queries and cannot be changed by photographer accounts. Move existing per-studio website settings to `settings/{uid}` as well. Do not temporarily make these collections readable by every signed-in user as a migration workaround.
+
+New accounts are always photographers (`role: "client"`). To bootstrap an administrator, register the trusted account first, then set `users/{uid}/role` to `admin` from the Firebase Console or a trusted Admin SDK. The client app cannot promote itself, and subscription fields are writable only by administrators.
+
 ```json
 {
   "rules": {
     "users": {
+      ".read": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'",
       "$uid": {
         ".read": "$uid === auth.uid",
-        ".write": "$uid === auth.uid",
+        ".write": "auth != null && ((!data.exists() && $uid === auth.uid && newData.child('role').val() === 'client') || root.child('users/' + auth.uid + '/role').val() === 'admin')",
         ".validate": "newData.hasChildren(['email', 'name', 'role', 'createdAt'])",
+        "email": { ".write": "auth != null && ($uid === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin')" },
+        "name": { ".write": "auth != null && ($uid === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin')" },
+        "studioName": { ".write": "auth != null && ($uid === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin')" },
+        "phone": { ".write": "auth != null && ($uid === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin')" },
+        "website": { ".write": "auth != null && ($uid === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin')" },
+        "instagram": { ".write": "auth != null && ($uid === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin')" },
+        "facebook": { ".write": "auth != null && ($uid === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin')" },
+        "location": { ".write": "auth != null && ($uid === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin')" },
+        "bio": { ".write": "auth != null && ($uid === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin')" },
+        "logo": { ".write": "auth != null && ($uid === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin')" },
+        "profileImage": { ".write": "auth != null && ($uid === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin')" },
+        "brandColor": { ".write": "auth != null && ($uid === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin')" },
+        "subscriptionPlan": { ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'" },
+        "subscriptionExpiresAt": { ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'" },
+        "subscriptionGrantedAt": { ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'" },
+        "subscriptionNote": { ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'" },
         "role": {
-          ".validate": "data.val() === newData.val()"
+          ".validate": "data.val() === newData.val() || (!data.exists() && newData.val() === 'client')"
         }
       }
     },
     "clients": {
-      ".read": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'",
-      ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'"
+      ".indexOn": ["ownerUid"],
+      ".read": "(auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin') || (auth != null && query.orderByChild === 'ownerUid' && query.equalTo === auth.uid)",
+      "$clientId": {
+        ".read": "(auth != null && (data.child('ownerUid').val() === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin'))",
+        ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || (data.exists() ? data.child('ownerUid').val() === auth.uid : newData.child('ownerUid').val() === auth.uid))",
+        "ownerUid": { ".validate": "newData.val() === data.val() || (!data.exists() && newData.val() === auth.uid)" }
+      }
     },
     "galleries": {
-      ".read": "auth != null",
-      "$gid": {
-        ".read": "data.child('visibility').val() === 'public' || (auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin')",
-        ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'"
+      ".indexOn": ["ownerUid"],
+      ".read": "(auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin') || (auth != null && query.orderByChild === 'ownerUid' && query.equalTo === auth.uid)",
+      "$galleryId": {
+        ".read": "(auth != null && (data.child('ownerUid').val() === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin')) || data.child('status').val() === 'published'",
+        ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || (data.exists() ? data.child('ownerUid').val() === auth.uid : newData.child('ownerUid').val() === auth.uid))",
+        "ownerUid": { ".validate": "newData.val() === data.val() || (!data.exists() && newData.val() === auth.uid)" }
       }
     },
     "albums": {
-      ".read": "auth != null",
-      ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'"
+      ".indexOn": ["ownerUid", "galleryId"],
+      ".read": "(auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin') || (auth != null && query.orderByChild === 'ownerUid' && query.equalTo === auth.uid) || (query.orderByChild === 'galleryId' && ((auth != null && root.child('galleries/' + query.equalTo + '/ownerUid').val() === auth.uid) || root.child('galleries/' + query.equalTo + '/status').val() === 'published'))",
+      "$albumId": {
+        ".read": "(auth != null && (data.child('ownerUid').val() === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin')) || root.child('galleries/' + data.child('galleryId').val() + '/status').val() === 'published'",
+        ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || (data.exists() ? data.child('ownerUid').val() === auth.uid : newData.child('ownerUid').val() === auth.uid))",
+        "ownerUid": { ".validate": "newData.val() === data.val() || (!data.exists() && newData.val() === auth.uid)" }
+      }
     },
     "photos": {
-      ".read": "auth != null",
-      ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'"
+      ".indexOn": ["ownerUid", "galleryId", "albumId"],
+      ".read": "(auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin') || (auth != null && query.orderByChild === 'ownerUid' && query.equalTo === auth.uid) || (query.orderByChild === 'galleryId' && ((auth != null && root.child('galleries/' + query.equalTo + '/ownerUid').val() === auth.uid) || root.child('galleries/' + query.equalTo + '/status').val() === 'published')) || (query.orderByChild === 'albumId' && ((auth != null && root.child('albums/' + query.equalTo + '/ownerUid').val() === auth.uid) || root.child('galleries/' + root.child('albums/' + query.equalTo + '/galleryId').val() + '/status').val() === 'published'))",
+      "$photoId": {
+        ".read": "(auth != null && (data.child('ownerUid').val() === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin')) || root.child('galleries/' + data.child('galleryId').val() + '/status').val() === 'published'",
+        ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || (data.exists() ? data.child('ownerUid').val() === auth.uid : newData.child('ownerUid').val() === auth.uid))",
+        "ownerUid": { ".validate": "newData.val() === data.val() || (!data.exists() && newData.val() === auth.uid)" }
+      }
     },
     "favorites": {
-      ".read": "auth != null",
-      ".write": "auth != null"
+      ".indexOn": ["ownerUid", "galleryId"],
+      ".read": "(auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin') || (auth != null && query.orderByChild === 'ownerUid' && query.equalTo === auth.uid) || (query.orderByChild === 'galleryId' && ((auth != null && root.child('galleries/' + query.equalTo + '/ownerUid').val() === auth.uid) || root.child('galleries/' + query.equalTo + '/status').val() === 'published'))",
+      "$favoriteId": {
+        ".read": "(auth != null && (data.child('ownerUid').val() === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin')) || root.child('galleries/' + data.child('galleryId').val() + '/status').val() === 'published'",
+        ".write": "(auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || data.child('ownerUid').val() === auth.uid)) || root.child('galleries/' + (data.exists() ? data.child('galleryId').val() : newData.child('galleryId').val()) + '/status').val() === 'published'",
+        "ownerUid": { ".validate": "newData.val() === root.child('galleries/' + newData.parent().child('galleryId').val() + '/ownerUid').val()" }
+      }
     },
     "comments": {
-      ".read": true,
-      ".write": "auth != null"
+      ".indexOn": ["ownerUid", "galleryId"],
+      ".read": "(auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin') || (auth != null && query.orderByChild === 'ownerUid' && query.equalTo === auth.uid) || (query.orderByChild === 'galleryId' && ((auth != null && root.child('galleries/' + query.equalTo + '/ownerUid').val() === auth.uid) || root.child('galleries/' + query.equalTo + '/status').val() === 'published'))",
+      "$commentId": {
+        ".read": "(auth != null && (data.child('ownerUid').val() === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin')) || root.child('galleries/' + data.child('galleryId').val() + '/status').val() === 'published'",
+        ".write": "(auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || data.child('ownerUid').val() === auth.uid)) || root.child('galleries/' + (data.exists() ? data.child('galleryId').val() : newData.child('galleryId').val()) + '/status').val() === 'published'",
+        "ownerUid": { ".validate": "newData.val() === root.child('galleries/' + newData.parent().child('galleryId').val() + '/ownerUid').val()" }
+      }
     },
     "settings": {
+      "$uid": {
+        ".read": "auth != null && ($uid === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin')",
+        ".write": "auth != null && ($uid === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin')"
+      }
+    },
+    "pricing": {
       ".read": true,
       ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'"
     },
+    "payments": {
+      ".indexOn": ["userId"],
+      ".read": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || (query.orderByChild === 'userId' && query.equalTo === auth.uid))",
+      "$paymentId": {
+        ".read": "auth != null && (data.child('userId').val() === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin')",
+        ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || (!data.exists() && newData.child('userId').val() === auth.uid && newData.child('status').val() === 'pending'))"
+      }
+    },
     "activity": {
-      ".read": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'",
-      ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'"
+      ".indexOn": ["ownerUid"],
+      ".read": "(auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin') || (auth != null && query.orderByChild === 'ownerUid' && query.equalTo === auth.uid)",
+      "$activityId": {
+        ".read": "auth != null && (data.child('ownerUid').val() === auth.uid || root.child('users/' + auth.uid + '/role').val() === 'admin')",
+        ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || (data.exists() ? data.child('ownerUid').val() === auth.uid : newData.child('ownerUid').val() === auth.uid))",
+        "ownerUid": { ".validate": "newData.val() === data.val() || (!data.exists() && newData.val() === auth.uid)" }
+      }
     }
   }
 }

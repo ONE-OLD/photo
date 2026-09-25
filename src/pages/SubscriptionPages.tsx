@@ -30,26 +30,41 @@ export function SubscriptionPage() {
   const [usage, setUsage] = useState<{ storageBytes: number; totalPhotos: number; totalClients: number; totalGalleries: number } | null>(null);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
   const [payerNumber, setPayerNumber] = useState(profile?.phone || '');
   const [reference, setReference] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const load = async () => {
-    const [p, u, pays] = await Promise.all([
-      database.getPlans(),
-      database.getUserUsage(user?.uid),
-      user ? database.getPaymentsByUser(user.uid) : Promise.resolve([]),
-    ]);
-    setPlans(p);
-    setUsage(u as any);
-    setPayments(pays);
-    setLoading(false);
+    try {
+      const [p, u, pays] = await Promise.all([
+        database.getPlans(),
+        database.getUserUsage(user?.uid),
+        user ? database.getPaymentsByUser(user.uid) : Promise.resolve([]),
+      ]);
+      setPlans(p);
+      setUsage(u as any);
+      setPayments(pays);
+      setLoadError('');
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Failed to load subscription data.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <Spinner />;
+  if (loadError) {
+    return (
+      <div role="alert" className="space-y-3 text-sm text-red-600 dark:text-red-400">
+        <p>Could not load subscription data: {loadError}</p>
+        <Button variant="secondary" onClick={() => { setLoading(true); void load(); }}>Retry</Button>
+      </div>
+    );
+  }
 
   const currentPlan = getPlanById(plans, profile?.subscriptionPlan);
   const expired = currentPlan.id !== 'free' && !!profile?.subscriptionExpiresAt && new Date(profile.subscriptionExpiresAt).getTime() < Date.now();
@@ -103,7 +118,7 @@ export function SubscriptionPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard title="Current Plan" value={effectivePlan.name} icon={<Shield size={20} />} />
         <StatCard title="Storage Used" value={`${storageUsedGb.toFixed(2)} / ${effectivePlan.storageGb} GB`} icon={<HardDrive size={20} />} />
-        <StatCard title="Clients" value={effectivePlan.maxClients < 0 ? `${usage?.totalClients ?? 0} / ∞` : `${usage?.totalClients ?? 0} / ${effectivePlan.maxClients}`} icon={<Users size={20} />} />
+        <StatCard title="Clients" value={effectivePlan.maxClients < 0 ? `${usage?.totalClients ?? '—'} / ∞` : `${usage?.totalClients ?? '—'} / ${effectivePlan.maxClients}`} icon={<Users size={20} />} />
         <StatCard title="Galleries" value={effectivePlan.maxGalleries < 0 ? `${usage?.totalGalleries ?? 0} / ∞` : `${usage?.totalGalleries ?? 0} / ${effectivePlan.maxGalleries}`} icon={<ImageIcon size={20} />} />
       </div>
 

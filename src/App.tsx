@@ -17,28 +17,32 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 // Dashboard Layout
 function DashboardLayout() {
+  const { isAdmin } = useAuth();
   const [currentPage, setCurrentPage] = useState(() => {
     const st = window.history.state as any;
-    return (st?.luminaPage as string) || 'overview';
+    return (st?.usr?.luminaPage as string) || (st?.luminaPage as string) || 'overview';
   });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [editingGalleryId, setEditingGalleryId] = useState<string | null>(null);
+  const [editingGalleryId, setEditingGalleryId] = useState<string | null>(() => {
+    const st = window.history.state as any;
+    return st?.usr?.galleryId || st?.galleryId || null;
+  });
   const navigate = useNavigate();
   const location = useLocation();
 
   // Keep page in sync when navigating with browser back/forward
   useEffect(() => {
-    const st = window.history.state as any;
-    if (st?.luminaPage) {
-      setCurrentPage(st.luminaPage);
-      if (st.luminaPage !== 'gallery-editor') setEditingGalleryId(null);
+    const state = location.state as { luminaPage?: string; galleryId?: string } | null;
+    if (state?.luminaPage) {
+      setCurrentPage(state.luminaPage);
+      setEditingGalleryId(state.luminaPage === 'gallery-editor' ? state.galleryId || null : null);
     }
-  }, [location.key]);
+  }, [location.key, location.state]);
 
-  const goToPage = (page: string) => {
+  const goToPage = (page: string, galleryId?: string) => {
     setCurrentPage(page);
-    setEditingGalleryId(page === 'gallery-editor' ? editingGalleryId : null);
-    navigate('/dashboard', { state: { luminaPage: page } });
+    setEditingGalleryId(page === 'gallery-editor' ? galleryId || null : null);
+    navigate('/dashboard', { state: { luminaPage: page, galleryId: page === 'gallery-editor' ? galleryId : undefined } });
   };
 
   const pageTitle: Record<string, string> = {
@@ -53,17 +57,19 @@ function DashboardLayout() {
     admin: 'Admin',
     pricing: 'Pricing Management',
   };
+  const visiblePage = !isAdmin && (currentPage === 'admin' || currentPage === 'pricing')
+    ? 'overview'
+    : currentPage;
 
   const handleEditGallery = (id: string) => {
-    setEditingGalleryId(id);
-    goToPage('gallery-editor');
+    goToPage('gallery-editor', id);
   };
 
   const renderPage = () => {
-    if (editingGalleryId && currentPage === 'gallery-editor') {
-      return <GalleryEditorPage galleryId={editingGalleryId} onBack={() => { setEditingGalleryId(null); setCurrentPage('galleries'); }} />;
+    if (editingGalleryId && visiblePage === 'gallery-editor') {
+      return <GalleryEditorPage galleryId={editingGalleryId} onBack={() => goToPage('galleries')} />;
     }
-    switch (currentPage) {
+    switch (visiblePage) {
       case 'overview': return <DashboardOverview />;
       case 'galleries': return <GalleriesPage onEditGallery={handleEditGallery} />;
       case 'clients': return <ClientsPage />;
@@ -81,13 +87,13 @@ function DashboardLayout() {
   return (
     <div className="flex min-h-screen bg-[var(--bg-secondary)]">
       <DashboardSidebar 
-        currentPage={currentPage} 
+        currentPage={visiblePage} 
         onNavigate={goToPage}
         mobileOpen={mobileMenuOpen}
         onCloseMobile={() => setMobileMenuOpen(false)}
       />
       <div className="flex-1 flex flex-col min-w-0">
-        <DashboardHeader onMenuClick={() => setMobileMenuOpen(true)} title={pageTitle[currentPage] || 'Dashboard'} />
+        <DashboardHeader onMenuClick={() => setMobileMenuOpen(true)} title={pageTitle[visiblePage] || 'Dashboard'} />
         <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
           {renderPage()}
         </main>
@@ -139,12 +145,7 @@ function App() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)]">
         <div className="text-center">
-          <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-gradient-to-br from-[var(--accent)] to-purple-500 flex items-center justify-center animate-pulse-soft">
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          </div>
+          <img src="/lumina-logo.jpg" alt="" className="w-12 h-12 mx-auto mb-4 rounded-xl object-contain animate-pulse-soft" />
           <p className="text-sm text-[var(--text-muted)]">Loading Lumina...</p>
         </div>
       </div>
@@ -153,7 +154,7 @@ function App() {
 
   return (
     <AppProvider>
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AppRoutes />
         <ToastContainer />
       </BrowserRouter>

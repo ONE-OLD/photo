@@ -1,4 +1,4 @@
-import { db } from '../config/firebase';
+import { auth, db } from '../config/firebase';
 import { ref, set, get, update, remove, push, onValue, query, orderByChild, equalTo, off } from 'firebase/database';
 import type { Database } from 'firebase/database';
 
@@ -89,6 +89,7 @@ export interface UserProfile {
 
 export interface Client {
   id: string;
+  ownerUid: string;
   name: string;
   email: string;
   phone?: string;
@@ -98,6 +99,7 @@ export interface Client {
 
 export interface Gallery {
   id: string;
+  ownerUid: string;
   title: string;
   description?: string;
   clientId?: string;
@@ -119,6 +121,7 @@ export interface Gallery {
 
 export interface Album {
   id: string;
+  ownerUid: string;
   galleryId: string;
   title: string;
   coverImage?: string;
@@ -128,6 +131,7 @@ export interface Album {
 
 export interface Photo {
   id: string;
+  ownerUid: string;
   galleryId: string;
   albumId: string;
   publicId: string;
@@ -141,6 +145,7 @@ export interface Photo {
 }
 
 export interface Favorite {
+  ownerUid: string;
   galleryId: string;
   photoId: string;
   clientEmail: string;
@@ -149,6 +154,7 @@ export interface Favorite {
 
 export interface Comment {
   id: string;
+  ownerUid: string;
   galleryId: string;
   photoId: string;
   clientEmail: string;
@@ -159,6 +165,7 @@ export interface Comment {
 
 export interface Activity {
   id: string;
+  ownerUid: string;
   type: string;
   message: string;
   createdAt: string;
@@ -185,6 +192,25 @@ export function generateId(): string {
   return Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
 }
 
+function currentUid(): string {
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error('You must be signed in to access photographer data.');
+  return uid;
+}
+
+async function getOwnedRecords<T>(collection: string, uid = currentUid()): Promise<T[]> {
+  const recordsQuery = query(ref(db, collection), orderByChild('ownerUid'), equalTo(uid));
+  const snapshot = await get(recordsQuery);
+  return snapshot.val() ? Object.values(snapshot.val()) as T[] : [];
+}
+
+async function removeRecordsByField(collection: string, field: string, value: string) {
+  const recordsQuery = query(ref(db, collection), orderByChild(field), equalTo(value));
+  const snapshot = await get(recordsQuery);
+  if (!snapshot.val()) return;
+  await Promise.all(Object.keys(snapshot.val()).map(id => remove(ref(db, `${collection}/${id}`))));
+}
+
 // Database operations
 export const database = {
   // User operations
@@ -207,28 +233,28 @@ export const database = {
   },
 
   async updateUserProfile(uid: string, data: Partial<UserProfile>) {
-    const userRef = ref(db, `users/${uid}`);
-    await update(userRef, data);
-    const snapshot = await get(userRef);
-    return snapshot.val();
+    const updates = Object.fromEntries(
+      Object.entries(data).map(([field, value]) => [`users/${uid}/${field}`, value])
+    );
+    await update(ref(db), updates);
+    return this.getUserProfile(uid);
   },
 
   // Client operations
-  async createClient(client: Omit<Client, 'id' | 'createdAt'>, profile?: UserProfile | null) {
+  async createClient(client: Omit<Client, 'id' | 'createdAt' | 'ownerUid'>, profile?: UserProfile | null) {
     if (profile) {
       const quotaError = await this.checkQuota(profile, 'clients');
       if (quotaError) throw new QuotaError(quotaError);
     }
     const id = generateId();
     const clientRef = ref(db, `clients/${id}`);
-    await set(clientRef, { ...client, id, createdAt: new Date().toISOString() });
-    return { ...client, id };
+    const data = { ...client, id, ownerUid: currentUid(), createdAt: new Date().toISOString() };
+    await set(clientRef, data);
+    return data;
   },
 
   async getClients() {
-    const clientsRef = ref(db, 'clients');
-    const snapshot = await get(clientsRef);
-    return snapshot.val() ? Object.values(snapshot.val()) : [];
+    return getOwnedRecords<Client>('clients');
   },
 
   async getClient(id: string) {
@@ -250,23 +276,21 @@ export const database = {
   },
 
   // Gallery operations
-  async createGallery(gallery: Omit<Gallery, 'id' | 'createdAt' | 'updatedAt'>, profile?: UserProfile | null) {
+  async createGallery(gallery: Omit<Gallery, 'id' | 'createdAt' | 'updatedAt' | 'ownerUid'>, profile?: UserProfile | null) {
     if (profile) {
       const quotaError = await this.checkQuota(profile, 'galleries');
       if (quotaError) throw new QuotaError(quotaError);
     }
     const id = generateId();
     const galleryRef = ref(db, `galleries/${id}`);
-    const data = { ...gallery, id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    const data = { ...gallery, id, ownerUid: currentUid(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
     await set(galleryRef, data);
     this.logActivity('gallery_created', `Gallery "${gallery.title}" created`);
     return data;
   },
 
   async getGalleries() {
-    const galleriesRef = ref(db, 'galleries');
-    const snapshot = await get(galleriesRef);
-    return snapshot.val() ? Object.values(snapshot.val()) : [];
+    return getOwnedRecords<Gallery>('galleries');
   },
 
   async getGallery(id: string) {
@@ -283,38 +307,27 @@ export const database = {
   },
 
   async deleteGallery(id: string) {
+    const gallery = await this.getGallery(id) as Gallery | null;
+    if (!gallery || gallery.ownerUid !== currentUid()) throw new Error('You do not own this gallery.');
+    await Promise.all([
+      removeRecordsByField('albums', 'galleryId', id),
+      removeRecordsByField('photos', 'galleryId', id),
+      removeRecordsByField('favorites', 'galleryId', id),
+      removeRecordsByField('comments', 'galleryId', id),
+    ]);
     await remove(ref(db, `galleries/${id}`));
-    // Cascade-delete related data in the remote database as well
-    const [albums, photos] = await Promise.all([
-      get(ref(db, 'albums')),
-      get(ref(db, 'photos')),
-    ]);
-    const updates: Record<string, null> = {};
-    if (albums.val()) Object.keys(albums.val()).forEach(aid => {
-      if (albums.val()[aid].galleryId === id) updates[`albums/${aid}`] = null;
-    });
-    if (photos.val()) Object.keys(photos.val()).forEach(pid => {
-      if (photos.val()[pid].galleryId === id) updates[`photos/${pid}`] = null;
-    });
-    const [favorites, comments] = await Promise.all([
-      get(ref(db, 'favorites')),
-      get(ref(db, 'comments')),
-    ]);
-    if (favorites.val()) Object.keys(favorites.val()).forEach(fid => {
-      if (favorites.val()[fid].galleryId === id) updates[`favorites/${fid}`] = null;
-    });
-    if (comments.val()) Object.keys(comments.val()).forEach(cid => {
-      if (comments.val()[cid].galleryId === id) updates[`comments/${cid}`] = null;
-    });
-    if (Object.keys(updates).length > 0) await update(ref(db), updates);
   },
 
   // Album operations
-  async createAlbum(album: Omit<Album, 'id' | 'createdAt'>) {
+  async createAlbum(album: Omit<Album, 'id' | 'createdAt' | 'ownerUid'>) {
+    const gallery = await this.getGallery(album.galleryId) as Gallery | null;
+    const ownerUid = currentUid();
+    if (!gallery || gallery.ownerUid !== ownerUid) throw new Error('You do not own this gallery.');
     const id = generateId();
     const albumRef = ref(db, `albums/${id}`);
-    await set(albumRef, { ...album, id, createdAt: new Date().toISOString() });
-    return { ...album, id };
+    const data = { ...album, id, ownerUid, createdAt: new Date().toISOString() };
+    await set(albumRef, data);
+    return data;
   },
 
   async getAlbumsByGallery(galleryId: string) {
@@ -332,28 +345,26 @@ export const database = {
   },
 
   async deleteAlbum(id: string) {
+    const albumSnapshot = await get(ref(db, `albums/${id}`));
+    if (albumSnapshot.val()?.ownerUid !== currentUid()) throw new Error('You do not own this album.');
+    await removeRecordsByField('photos', 'albumId', id);
     await remove(ref(db, `albums/${id}`));
-    // Cascade-delete the album's photos from the remote database as well
-    const photosSnap = await get(ref(db, 'photos'));
-    if (photosSnap.val()) {
-      const updates: Record<string, null> = {};
-      Object.keys(photosSnap.val()).forEach(pid => {
-        if (photosSnap.val()[pid].albumId === id) updates[`photos/${pid}`] = null;
-      });
-      if (Object.keys(updates).length > 0) await update(ref(db), updates);
-    }
   },
 
   // Photo operations
-  async addPhoto(photo: Omit<Photo, 'id' | 'createdAt'>, profile?: UserProfile | null) {
+  async addPhoto(photo: Omit<Photo, 'id' | 'createdAt' | 'ownerUid'>, profile?: UserProfile | null) {
     if (profile) {
       const quotaError = await this.checkQuota(profile, 'storage', photo.bytes || 0);
       if (quotaError) throw new QuotaError(quotaError);
     }
+    const gallery = await this.getGallery(photo.galleryId) as Gallery | null;
+    const ownerUid = currentUid();
+    if (!gallery || gallery.ownerUid !== ownerUid) throw new Error('You do not own this gallery.');
     const id = generateId();
     const photoRef = ref(db, `photos/${id}`);
-    await set(photoRef, { ...photo, id, createdAt: new Date().toISOString() });
-    return { ...photo, id };
+    const data = { ...photo, id, ownerUid, createdAt: new Date().toISOString() };
+    await set(photoRef, data);
+    return data;
   },
 
   async getPhotosByAlbum(albumId: string) {
@@ -377,7 +388,9 @@ export const database = {
   // Favorites
   async addFavorite(galleryId: string, photoId: string, clientEmail: string) {
     const id = `${galleryId}_${photoId}_${clientEmail.replace(/[^a-z0-9]/gi, '_')}`;
-    await set(ref(db, `favorites/${id}`), { galleryId, photoId, clientEmail, createdAt: new Date().toISOString() });
+    const gallery = await this.getGallery(galleryId) as Gallery | null;
+    if (!gallery) throw new Error('Gallery not found.');
+    await set(ref(db, `favorites/${id}`), { ownerUid: gallery.ownerUid, galleryId, photoId, clientEmail, createdAt: new Date().toISOString() });
   },
 
   async removeFavorite(galleryId: string, photoId: string, clientEmail: string) {
@@ -387,7 +400,8 @@ export const database = {
 
   async getFavorites(galleryId: string, clientEmail?: string) {
     const favRef = ref(db, 'favorites');
-    const snapshot = await get(favRef);
+    const q = query(favRef, orderByChild('galleryId'), equalTo(galleryId));
+    const snapshot = await get(q);
     if (!snapshot.val()) return [];
     return Object.values(snapshot.val()).filter((f: any) => 
       f.galleryId === galleryId && (!clientEmail || f.clientEmail === clientEmail)
@@ -403,15 +417,19 @@ export const database = {
 
 
   // Comments
-  async addComment(comment: Omit<Comment, 'id' | 'createdAt'>) {
+  async addComment(comment: Omit<Comment, 'id' | 'createdAt' | 'ownerUid'>) {
     const id = generateId();
-    await set(ref(db, `comments/${id}`), { ...comment, id, createdAt: new Date().toISOString() });
-    return { ...comment, id };
+    const gallery = await this.getGallery(comment.galleryId) as Gallery | null;
+    if (!gallery) throw new Error('Gallery not found.');
+    const data = { ...comment, id, ownerUid: gallery.ownerUid, createdAt: new Date().toISOString() };
+    await set(ref(db, `comments/${id}`), data);
+    return data;
   },
 
   async getComments(galleryId: string, photoId?: string) {
     const commentsRef = ref(db, 'comments');
-    const snapshot = await get(commentsRef);
+    const q = query(commentsRef, orderByChild('galleryId'), equalTo(galleryId));
+    const snapshot = await get(q);
     if (!snapshot.val()) return [];
     return Object.values(snapshot.val()).filter((c: any) => 
       c.galleryId === galleryId && (!photoId || c.photoId === photoId)
@@ -425,27 +443,25 @@ export const database = {
   // Activity
   async logActivity(type: string, message: string) {
     const id = generateId();
-    await set(ref(db, `activity/${id}`), { id, type, message, createdAt: new Date().toISOString() });
+    await set(ref(db, `activity/${id}`), { id, ownerUid: currentUid(), type, message, createdAt: new Date().toISOString() });
   },
 
   async getActivity(limit = 20) {
-    const activityRef = ref(db, 'activity');
-    const snapshot = await get(activityRef);
-    if (!snapshot.val()) return [];
-    return Object.values(snapshot.val()).sort((a: any, b: any) => 
+    const activity = await getOwnedRecords<Activity>('activity');
+    return activity.sort((a: any, b: any) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     ).slice(0, limit);
   },
 
   // Settings
   async getSettings() {
-    const settingsRef = ref(db, 'settings');
+    const settingsRef = ref(db, `settings/${currentUid()}`);
     const snapshot = await get(settingsRef);
     return snapshot.val() || {};
   },
 
   async updateSettings(data: Partial<SiteSettings>) {
-    const settingsRef = ref(db, 'settings');
+    const settingsRef = ref(db, `settings/${currentUid()}`);
     await update(settingsRef, data);
     const snapshot = await get(settingsRef);
     return snapshot.val() || {};
@@ -493,34 +509,29 @@ export const database = {
   },
 
   // ─── Usage & quota enforcement ───────────────────────────────────────────
-  async getUserUsage(uid?: string) {
-    const photos = uid
-      ? ((await this.getPhotosByOwner(uid)) as Photo[])
-      : ((await this.getStats()) as any).totalPhotos;
-    const totalBytes = uid
-      ? photos.reduce((sum: number, p: Photo) => sum + (p.bytes || 0), 0)
-      : ((await this.getPhotoBytesAll()));
-    const stats = await this.getStats();
+  async getUserUsage(uid = currentUid()) {
+    const [photos, galleries, clients] = await Promise.all([
+      getOwnedRecords<Photo>('photos', uid),
+      getOwnedRecords<Gallery>('galleries', uid),
+      getOwnedRecords<Client>('clients', uid),
+    ]);
+    const totalBytes = (photos as Photo[]).reduce((sum, photo) => sum + (photo.bytes || 0), 0);
     return {
       storageBytes: totalBytes,
       storageGb: totalBytes / (1024 * 1024 * 1024),
-      totalPhotos: stats.totalPhotos,
-      totalClients: stats.totalClients,
-      totalGalleries: stats.totalGalleries,
+      totalPhotos: photos.length,
+      totalClients: clients.length,
+      totalGalleries: galleries.length,
     };
   },
 
-  async getPhotoBytesAll(): Promise<number> {
-    const snapshot = await get(ref(db, 'photos'));
-    if (!snapshot.val()) return 0;
-    return (Object.values(snapshot.val()) as Photo[]).reduce((s, p) => s + (p.bytes || 0), 0);
+  async getPhotoBytesAll(uid = currentUid()): Promise<number> {
+    const photos = await this.getPhotosByOwner(uid);
+    return photos.reduce((sum, photo) => sum + (photo.bytes || 0), 0);
   },
 
   async getPhotosByOwner(uid: string): Promise<Photo[]> {
-    // Photos belong to galleries which belong to the current (single-tenant) workspace
-    void uid;
-    const snapshot = await get(ref(db, 'photos'));
-    return snapshot.val() ? (Object.values(snapshot.val()) as Photo[]) : [];
+    return getOwnedRecords<Photo>('photos', uid);
   },
 
   // Check whether an action is allowed for the given profile; returns error message or null
@@ -578,8 +589,11 @@ export const database = {
   },
 
   async getPaymentsByUser(uid: string): Promise<PaymentRecord[]> {
-    const all = await this.getPayments();
-    return all.filter(p => p.userId === uid);
+    const paymentsRef = ref(db, 'payments');
+    const userPayments = query(paymentsRef, orderByChild('userId'), equalTo(uid));
+    const snapshot = await get(userPayments);
+    if (!snapshot.val()) return [];
+    return (Object.values(snapshot.val()) as PaymentRecord[]).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   },
 
   async setPaymentStatus(id: string, status: 'confirmed' | 'rejected') {
@@ -608,41 +622,48 @@ export const database = {
   // Realtime listeners
   subscribeToGalleries(callback: (galleries: Gallery[]) => void) {
     const galleriesRef = ref(db, 'galleries');
+    const galleriesQuery = query(galleriesRef, orderByChild('ownerUid'), equalTo(currentUid()));
     const handler = (snapshot: any) => {
       const data = snapshot.val() ? Object.values(snapshot.val()) : [];
       callback(data as Gallery[]);
     };
-    onValue(galleriesRef, handler);
-    return () => off(galleriesRef, 'value', handler);
+    onValue(galleriesQuery, handler);
+    return () => off(galleriesQuery, 'value', handler);
   },
 
   subscribeToClients(callback: (clients: Client[]) => void) {
     const clientsRef = ref(db, 'clients');
+    const clientsQuery = query(clientsRef, orderByChild('ownerUid'), equalTo(currentUid()));
     const handler = (snapshot: any) => {
       const data = snapshot.val() ? Object.values(snapshot.val()) : [];
       callback(data as Client[]);
     };
-    onValue(clientsRef, handler);
-    return () => off(clientsRef, 'value', handler);
+    onValue(clientsQuery, handler);
+    return () => off(clientsQuery, 'value', handler);
   },
 
   // Stats
-  async getStats() {
-    const [galleriesSnap, clientsSnap, photosSnap, albumsSnap, favoritesSnap] = await Promise.all([
-      get(ref(db, 'galleries')),
-      get(ref(db, 'clients')),
-      get(ref(db, 'photos')),
-      get(ref(db, 'albums')),
-      get(ref(db, 'favorites')),
-    ]);
-    const galleries = galleriesSnap.val() ? Object.values(galleriesSnap.val()) : [];
+  async getStats(allUsers = false) {
+    const collections = allUsers
+      ? await Promise.all(['galleries', 'clients', 'photos', 'albums', 'favorites'].map(async collection => {
+        const snapshot = await get(ref(db, collection));
+        return snapshot.val() ? Object.values(snapshot.val()) : [];
+      }))
+      : await Promise.all([
+        getOwnedRecords<Gallery>('galleries'),
+        getOwnedRecords<Client>('clients'),
+        getOwnedRecords<Photo>('photos'),
+        getOwnedRecords<Album>('albums'),
+        getOwnedRecords<Favorite>('favorites'),
+      ]);
+    const [galleries, clients, photos, albums, favorites] = collections;
     return {
       totalGalleries: galleries.length,
       publishedGalleries: galleries.filter((g: any) => g.status === 'published').length,
-      totalClients: clientsSnap.val() ? Object.keys(clientsSnap.val()).length : 0,
-      totalPhotos: photosSnap.val() ? Object.keys(photosSnap.val()).length : 0,
-      totalAlbums: albumsSnap.val() ? Object.keys(albumsSnap.val()).length : 0,
-      totalFavorites: favoritesSnap.val() ? Object.keys(favoritesSnap.val()).length : 0,
+      totalClients: clients.length,
+      totalPhotos: photos.length,
+      totalAlbums: albums.length,
+      totalFavorites: favorites.length,
     };
   }
 };

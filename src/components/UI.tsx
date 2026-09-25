@@ -1,4 +1,5 @@
 import React, { useState, useEffect, type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes } from 'react';
+import { createPortal } from 'react-dom';
 import { useTheme, useToast, useAuth } from '../context/AppContext';
 import { X, Check, AlertCircle, Info, AlertTriangle, Moon, Sun, Monitor, Menu, LogOut, Camera, LayoutDashboard, Image, Users, Settings, Shield, Heart, Activity, FolderOpen, CreditCard } from 'lucide-react';
 
@@ -107,7 +108,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
 
   const sizes = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' };
 
-  return (
+  return createPortal((
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className={`relative w-full ${sizes[size]} bg-[var(--bg-card)] rounded-2xl shadow-[var(--shadow-xl)] border border-[var(--border-color)] animate-fade-in max-h-[90vh] overflow-y-auto`}>
@@ -122,7 +123,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
         <div className="p-6">{children}</div>
       </div>
     </div>
-  );
+  ), document.body);
 }
 
 // Toast Container
@@ -268,9 +269,7 @@ export function DashboardSidebar({ currentPage, onNavigate, mobileOpen, onCloseM
     <div className="flex flex-col h-full">
       <div className="p-5 border-b border-[var(--border-color)]">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[var(--accent)] to-purple-500 flex items-center justify-center">
-            <Camera size={18} className="text-white" />
-          </div>
+          <img src="/lumina-logo.jpg" alt="" className="w-9 h-9 rounded-lg object-contain" />
           <div>
             <h1 className="font-semibold text-[var(--text-primary)] text-sm">Lumina</h1>
             <p className="text-xs text-[var(--text-muted)]">{profile?.studioName || 'Studio'}</p>
@@ -279,7 +278,7 @@ export function DashboardSidebar({ currentPage, onNavigate, mobileOpen, onCloseM
       </div>
       
       <nav className="flex-1 p-3 space-y-1 sidebar-scroll overflow-y-auto">
-        {navItems.map(item => (
+        {navItems.filter(item => item.id !== 'admin' || profile?.role === 'admin').map(item => (
           <button
             key={item.id}
             onClick={() => { onNavigate(item.id); onCloseMobile(); }}

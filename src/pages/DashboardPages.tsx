@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { EmailAuthProvider, reauthenticateWithCredential, sendPasswordResetEmail, updatePassword } from 'firebase/auth';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { useAuth, useToast, useTheme } from '../context/AppContext';
+import app, { auth } from '../config/firebase';
 import { database, formatRwf, MTN_MOMO_MERCHANT_CODE, MTN_MOMO_USSD_DIAL, type Gallery, type Client, type Activity, type Album, type Photo, type UserProfile, type PaymentRecord, type PlanId, type SubscriptionPlan } from '../services/database';
 import { Button, Input, Textarea, Select, Card, Badge, StatCard, PageHeader, SearchInput, Modal, ConfirmDialog, EmptyState, Spinner } from '../components/UI';
 import { Image, Users, Heart, FolderOpen, Plus, Edit, Trash2, Eye, EyeOff, Copy, ExternalLink, Share2, MoreVertical, Calendar, Clock, Archive, LayoutGrid, List, Lock, Shield, Camera, CreditCard, Smartphone } from 'lucide-react';
@@ -106,6 +109,7 @@ export function DashboardOverview() {
 export function GalleriesPage({ onEditGallery }: { onEditGallery: (id: string) => void }) {
   const [galleries, setGalleries] = useState<Gallery[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [showCreate, setShowCreate] = useState(false);
@@ -115,10 +119,19 @@ export function GalleriesPage({ onEditGallery }: { onEditGallery: (id: string) =
   const { addToast } = useToast();
 
   const loadGalleries = useCallback(async () => {
-    const g = await database.getGalleries();
-    setGalleries((g as Gallery[]).sort((a: Gallery, b: Gallery) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-    setLoading(false);
+    setLoading(true);
+    setLoadError('');
+    try {
+      const g = await database.getGalleries();
+      setGalleries((g as Gallery[]).sort((a: Gallery, b: Gallery) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Failed to load galleries.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { void loadGalleries(); }, [loadGalleries]);
 
   // Open the gallery editor when an "edit" action is requested from the list
   useEffect(() => {
@@ -176,7 +189,12 @@ export function GalleriesPage({ onEditGallery }: { onEditGallery: (id: string) =
         </div>
       </div>
 
-      {loading ? <Spinner /> : filtered.length === 0 ? (
+      {loading ? <Spinner /> : loadError ? (
+        <div role="alert" className="space-y-3 text-sm text-red-600 dark:text-red-400">
+          <p>Could not load galleries: {loadError}</p>
+          <Button variant="secondary" onClick={() => { void loadGalleries(); }}>Retry</Button>
+        </div>
+      ) : filtered.length === 0 ? (
         <EmptyState icon={<Image size={48} />} title="No galleries yet" description="Create your first gallery to start delivering photos to clients." action={<Button onClick={() => setShowCreate(true)}>Create Gallery</Button>} />
       ) : viewMode === 'grid' ? (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -628,7 +646,7 @@ export function ActivityPage() {
 
 // SETTINGS PAGE
 export function SettingsPage() {
-  const { profile, refreshProfile } = useAuth();
+  const { profile, user, refreshProfile, logout } = useAuth();
   const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState('profile');
   const [name, setName] = useState(profile?.name || '');
@@ -648,6 +666,14 @@ export function SettingsPage() {
   const [heroSubtitle, setHeroSubtitle] = useState('');
   const [aboutText, setAboutText] = useState('');
   const [siteLoading, setSiteLoading] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [securityLoading, setSecurityLoading] = useState(false);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteEmailConfirmation, setDeleteEmailConfirmation] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
     database.getSettings().then(s => {
@@ -683,11 +709,75 @@ export function SettingsPage() {
     setSiteLoading(false);
   };
 
+  const handleChangePassword = async () => {
+    if (!user?.email || !currentPassword) {
+      addToast('Enter your current password first.', 'error');
+      return;
+    }
+    if (newPassword.length < 6) {
+      addToast('New password must be at least 6 characters.', 'error');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      addToast('New passwords do not match.', 'error');
+      return;
+    }
+    setSecurityLoading(true);
+    try {
+      const credential = EmailAuthProvider.credential(user.email, currentPassword);
+      await reauthenticateWithCredential(user, credential);
+      await updatePassword(user, newPassword);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      addToast('Password updated.', 'success');
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : 'Could not update password.', 'error');
+    } finally {
+      setSecurityLoading(false);
+    }
+  };
+
+  const handleSendPasswordReset = async () => {
+    if (!profile?.email) return;
+    try {
+      await sendPasswordResetEmail(auth, profile.email);
+      addToast(`Password reset link sent to ${profile.email}.`, 'success');
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : 'Could not send password reset email.', 'error');
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!user?.email || !profile?.email || deleteEmailConfirmation !== profile.email) {
+      addToast('Enter your account email exactly to confirm deletion.', 'error');
+      return;
+    }
+    if (!deletePassword) {
+      addToast('Enter your password to continue.', 'error');
+      return;
+    }
+    setDeleteLoading(true);
+    try {
+      const credential = EmailAuthProvider.credential(user.email, deletePassword);
+      await reauthenticateWithCredential(user, credential);
+      const deleteAccount = httpsCallable(getFunctions(app, 'us-central1'), 'deletePhotographerAccount');
+      await deleteAccount();
+      addToast('Your account and stored files were deleted.', 'success');
+      await logout();
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : 'Could not delete account.', 'error');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   const tabs = [
     { id: 'profile', label: 'Profile' },
     { id: 'branding', label: 'Branding' },
     { id: 'website', label: 'Portfolio' },
     { id: 'integrations', label: 'Integrations' },
+    ...(profile?.role === 'client' ? [{ id: 'security', label: 'Security' }] : []),
   ];
 
   return (
@@ -812,6 +902,44 @@ export function SettingsPage() {
           </div>
         </Card>
       )}
+
+      {activeTab === 'security' && profile?.role === 'client' && (
+        <div className="space-y-6">
+          <Card className="p-6 max-w-2xl">
+            <h3 className="font-semibold text-[var(--text-primary)] mb-2">Change password</h3>
+            <p className="text-sm text-[var(--text-muted)] mb-5">Confirm your current password before choosing a new one.</p>
+            <div className="space-y-4">
+              <Input label="Current password" type="password" autoComplete="current-password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} />
+              <Input label="New password" type="password" autoComplete="new-password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+              <Input label="Confirm new password" type="password" autoComplete="new-password" value={confirmNewPassword} onChange={e => setConfirmNewPassword(e.target.value)} />
+              <div className="flex flex-wrap justify-between gap-3 pt-2">
+                <Button variant="ghost" onClick={handleSendPasswordReset}>Send password reset email</Button>
+                <Button onClick={handleChangePassword} loading={securityLoading}>Update password</Button>
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-6 max-w-2xl border-red-500/30">
+            <h3 className="font-semibold text-red-600 dark:text-red-400 mb-2">Delete account</h3>
+            <p className="text-sm text-[var(--text-secondary)]">Permanently delete your photographer account, galleries, client records, and uploaded images. This cannot be undone.</p>
+            <div className="mt-4">
+              <Button variant="danger" onClick={() => setShowDeleteAccount(true)}>Delete account and files</Button>
+            </div>
+          </Card>
+
+          <Modal isOpen={showDeleteAccount} onClose={() => setShowDeleteAccount(false)} title="Permanently delete account">
+            <div className="space-y-4">
+              <p className="text-sm text-[var(--text-secondary)]">Your account, galleries, records, and Cloudinary images will be permanently deleted.</p>
+              <Input label="Password" type="password" autoComplete="current-password" value={deletePassword} onChange={e => setDeletePassword(e.target.value)} />
+              <Input label={`Type ${profile.email} to confirm`} value={deleteEmailConfirmation} onChange={e => setDeleteEmailConfirmation(e.target.value)} />
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="secondary" onClick={() => setShowDeleteAccount(false)}>Cancel</Button>
+                <Button variant="danger" loading={deleteLoading} onClick={handleDeleteAccount}>Delete permanently</Button>
+              </div>
+            </div>
+          </Modal>
+        </div>
+      )}
     </div>
   );
 }
@@ -822,9 +950,11 @@ export function AdminPage({ onNavigate }: { onNavigate?: (page: string) => void 
   const { addToast } = useToast();
   const [stats, setStats] = useState<any>(null);
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [usageByUser, setUsageByUser] = useState<Record<string, Awaited<ReturnType<typeof database.getUserUsage>>>>({});
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [grantTarget, setGrantTarget] = useState<UserProfile | null>(null);
   const [grantPlan, setGrantPlan] = useState<PlanId>('basic');
   const [grantMonths, setGrantMonths] = useState('1');
@@ -832,17 +962,29 @@ export function AdminPage({ onNavigate }: { onNavigate?: (page: string) => void 
   const [grantBusy, setGrantBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const [st, us, pays, pl] = await Promise.all([
-      database.getStats(),
-      database.getAllUsers(),
-      database.getPayments(),
-      database.getPlans(),
-    ]);
-    setStats(st);
-    setUsers(us as UserProfile[]);
-    setPayments(pays);
-    setPlans(pl);
-    setLoading(false);
+    try {
+      const [st, us, pays, pl] = await Promise.all([
+        database.getStats(true),
+        database.getAllUsers(),
+        database.getPayments(),
+        database.getPlans(),
+      ]);
+      const usageRows = await Promise.all(
+        (us as UserProfile[]).filter(user => user.role === 'client').map(async user =>
+          [user.uid, await database.getUserUsage(user.uid)] as const
+        )
+      );
+      setStats(st);
+      setUsers(us as UserProfile[]);
+      setUsageByUser(Object.fromEntries(usageRows));
+      setPayments(pays);
+      setPlans(pl);
+      setLoadError('');
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Failed to load admin data.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -858,6 +1000,14 @@ export function AdminPage({ onNavigate }: { onNavigate?: (page: string) => void 
     );
   }
   if (loading) return <Spinner />;
+  if (loadError) {
+    return (
+      <div role="alert" className="space-y-3 text-sm text-red-600 dark:text-red-400">
+        <p>Could not load admin data: {loadError}</p>
+        <Button variant="secondary" onClick={() => { setLoading(true); void load(); }}>Retry</Button>
+      </div>
+    );
+  }
 
   const planName = (id?: string) => plans.find(p => p.id === id)?.name || 'Free';
   const isExpired = (u: UserProfile) => {
@@ -988,6 +1138,12 @@ export function AdminPage({ onNavigate }: { onNavigate?: (page: string) => void 
                 {users.map(u => {
                   const plan = plans.find(p => p.id === (u.subscriptionPlan || 'free')) || plans.find(p => p.id === 'free');
                   const expired = isExpired(u);
+                  const effectivePlan = expired ? plans.find(p => p.id === 'free') || plan : plan;
+                  const usage = usageByUser[u.uid];
+                  const storageLimitBytes = (effectivePlan?.storageGb ?? 1) * 1024 * 1024 * 1024;
+                  const storageUsedBytes = usage?.storageBytes ?? 0;
+                  const storagePercent = storageLimitBytes > 0 ? Math.min(100, storageUsedBytes / storageLimitBytes * 100) : 100;
+                  const storageLimitReached = storageLimitBytes > 0 && storageUsedBytes >= storageLimitBytes;
                   return (
                     <tr key={u.uid} className="border-b border-[var(--border-color)] last:border-0">
                       <td className="py-2.5 pr-4 text-[var(--text-primary)] font-medium">{u.name || u.studioName || '—'}</td>
@@ -998,7 +1154,29 @@ export function AdminPage({ onNavigate }: { onNavigate?: (page: string) => void 
                           {plan?.name || 'Free'}{expired ? ' (expired)' : ''}
                         </Badge>
                       </td>
-                      <td className="py-2.5 pr-4 text-[var(--text-muted)] whitespace-nowrap">{plan?.storageGb ?? 1} GB / {plan && plan.maxClients < 0 ? '∞' : plan?.maxClients ?? 5}</td>
+                      <td className="py-2.5 pr-4 min-w-52">
+                        {u.role === 'client' ? (
+                          <>
+                            <div className="flex justify-between gap-3 text-xs text-[var(--text-secondary)]">
+                              <span>{(storageUsedBytes / (1024 * 1024 * 1024)).toFixed(2)} / {effectivePlan?.storageGb ?? 1} GB</span>
+                              <span>{storagePercent.toFixed(0)}%</span>
+                            </div>
+                            <div
+                              className="mt-1.5 h-2 overflow-hidden rounded-full bg-[var(--bg-tertiary)]"
+                              role="progressbar"
+                              aria-label={`${u.name || u.email} storage usage`}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-valuenow={Math.round(storagePercent)}
+                            >
+                              <div className={`h-full ${storageLimitReached ? 'bg-red-500' : storagePercent >= 80 ? 'bg-amber-500' : 'bg-[var(--accent)]'}`} style={{ width: `${storagePercent}%` }} />
+                            </div>
+                            <p className={`mt-1 text-xs ${storageLimitReached ? 'text-red-500' : 'text-[var(--text-muted)]'}`}>
+                              {storageLimitReached ? 'Storage limit reached; uploads blocked' : `${usage?.totalClients ?? 0} / ${effectivePlan?.maxClients === -1 ? '∞' : effectivePlan?.maxClients ?? 5} clients`}
+                            </p>
+                          </>
+                        ) : '—'}
+                      </td>
                       <td className="py-2.5 pr-4 text-[var(--text-muted)] whitespace-nowrap">
                         {u.subscriptionPlan && u.subscriptionPlan !== 'free' && u.subscriptionExpiresAt ? new Date(u.subscriptionExpiresAt).toLocaleDateString() : '—'}
                       </td>
@@ -1112,6 +1290,11 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
     let uploaded = 0;
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
+      const quotaError = await database.checkQuota(profileRef, 'storage', file.size);
+      if (quotaError) {
+        addToast(quotaError, 'error');
+        break;
+      }
       const formData = new FormData();
       formData.append('file', file);
       formData.append('upload_preset', uploadPreset);

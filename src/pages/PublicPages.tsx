@@ -12,9 +12,7 @@ function PublicNav() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <Link to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[var(--accent)] to-purple-500 flex items-center justify-center">
-              <Camera size={16} className="text-white" />
-            </div>
+            <img src="/lumina-logo.jpg" alt="" className="w-8 h-8 rounded-lg object-contain" />
             <span className="font-bold text-lg text-[var(--text-primary)]">Lumina</span>
           </Link>
           <div className="hidden md:flex items-center gap-8">
@@ -55,9 +53,7 @@ function Footer() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[var(--accent)] to-purple-500 flex items-center justify-center">
-                <Camera size={16} className="text-white" />
-              </div>
+              <img src="/lumina-logo.jpg" alt="" className="w-8 h-8 rounded-lg object-contain" />
               <span className="font-bold text-lg">Lumina</span>
             </div>
             <p className="text-sm text-[var(--text-muted)]">Professional photography gallery platform for delivering stunning client experiences.</p>
@@ -235,9 +231,10 @@ export function PricingPage() {
           </div>
           <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             {[
-              { name: 'Starter', price: '$9', period: '/mo', features: ['5 Galleries', '100 Photos', 'Basic Sharing', 'Email Support'], highlighted: false },
-              { name: 'Professional', price: '$29', period: '/mo', features: ['Unlimited Galleries', 'Unlimited Photos', 'Password Protection', 'Client Favorites', 'Priority Support', 'Custom Branding'], highlighted: true },
-              { name: 'Studio', price: '$59', period: '/mo', features: ['Everything in Pro', 'Team Members', 'API Access', 'White Label', 'Dedicated Support', 'Custom Integrations'], highlighted: false },
+              { name: 'Free', price: '0 Rwf', period: '/mo', features: ['Unlimited Gallery', '1 GB Storage', 'Basic Sharing'], highlighted: false },
+              { name: 'Starter', price: '5,000 Rwf', period: '/mo', features: ['Unlimited Galleries', '5 GB Storage', 'Basic Sharing', 'Email Support'], highlighted: true },
+              { name: 'Professional', price: '10,000 Rwf', period: '/mo', features: ['Unlimited Galleries', '10 GB Storage', 'Password Protection', 'Client Favorites', 'Priority Support', 'Custom Branding'], highlighted: false },
+              { name: 'Studio', price: '50,000 Rwf', period: '/mo', features: ['Everything in Pro','100 GB Storage', 'Dedicated Support', 'Custom Integrations'], highlighted: false },
             ].map((plan, i) => (
               <div key={i} className={`rounded-2xl p-8 ${plan.highlighted ? 'bg-gradient-to-br from-[var(--accent)] to-purple-600 text-white shadow-xl scale-105' : 'bg-[var(--bg-card)] border border-[var(--border-color)]'}`}>
                 {plan.highlighted && <span className="inline-block px-3 py-1 bg-white/20 rounded-full text-xs font-medium mb-4">Most Popular</span>}
@@ -379,9 +376,7 @@ export function LoginPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--accent)] to-purple-500 flex items-center justify-center">
-              <Camera size={20} className="text-white" />
-            </div>
+            <img src="/lumina-logo.jpg" alt="Lumina" className="w-10 h-10 rounded-xl object-contain" />
           </Link>
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">Welcome back</h1>
           <p className="text-[var(--text-muted)] mt-1">Sign in to your account</p>
@@ -437,9 +432,7 @@ export function RegisterPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--accent)] to-purple-500 flex items-center justify-center">
-              <Camera size={20} className="text-white" />
-            </div>
+            <img src="/lumina-logo.jpg" alt="Lumina" className="w-10 h-10 rounded-xl object-contain" />
           </Link>
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">Create your account</h1>
           <p className="text-[var(--text-muted)] mt-1">Start delivering beautiful galleries</p>
@@ -483,9 +476,7 @@ export function ForgotPasswordPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--accent)] to-purple-500 flex items-center justify-center">
-              <Camera size={20} className="text-white" />
-            </div>
+            <img src="/lumina-logo.jpg" alt="Lumina" className="w-10 h-10 rounded-xl object-contain" />
           </Link>
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">Reset Password</h1>
           <p className="text-[var(--text-muted)] mt-1">Enter your email to receive a reset link</p>

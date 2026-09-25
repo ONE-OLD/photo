@@ -37,9 +37,6 @@ interface ToastContextType {
   removeToast: (id: string) => void;
 }
 
-// Admin email — users registering with this email get the admin role
-const ADMIN_EMAIL = 'admin@lumina.com';
-
 // Auth Provider
 const AuthContext = createContext<AuthContextType | null>(null);
 const ThemeContext = createContext<ThemeContextType | null>(null);
@@ -98,13 +95,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
-      if (firebaseUser) {
-        const userProfile = await database.getUserProfile(firebaseUser.uid);
-        setProfile(userProfile);
-      } else {
+      try {
+        if (firebaseUser) {
+          const userProfile = await database.getUserProfile(firebaseUser.uid);
+          setProfile(userProfile);
+        } else {
+          setProfile(null);
+        }
+      } catch {
         setProfile(null);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return unsubscribe;
@@ -122,7 +124,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       uid: cred.user.uid,
       email,
       name,
-      role: email === ADMIN_EMAIL ? 'admin' : 'client',
+      role: 'client',
       subscriptionPlan: 'free',
       createdAt: new Date().toISOString()
     };
