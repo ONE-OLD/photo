@@ -1,0 +1,25 @@
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "name": "Kigalipix | Home",
+      "url": "https://kigalipix.vercel.app/"
+    },
+    {
+      "@type": "SiteNavigationElement",
+      "name": "Start Free Trial",
+      "url": "https://kigalipix.vercel.app/register"
+    },
+    {
+      "@type": "SiteNavigationElement",
+      "name": "Login",
+      "url": "https://kigalipix.vercel.app/login"
+    },
+    {
+      "@type": "SiteNavigationElement",
+      "name": "Pricing",
+      "url": "https://kigalipix.vercel.app/pricing"
+    }
+  ]
+}
