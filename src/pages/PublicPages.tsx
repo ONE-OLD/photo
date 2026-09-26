@@ -232,9 +232,9 @@ export function PricingPage() {
           <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             {[
               { name: 'Free', price: '0 Rwf', period: '/mo', features: ['Unlimited Gallery', '1 GB Storage', 'Basic Sharing'], highlighted: false },
-              { name: 'Starter', price: '5,000 Rwf', period: '/mo', features: ['Unlimited Galleries', '5 GB Storage', 'Basic Sharing', 'Email Support'], highlighted: true },
-              { name: 'Professional', price: '10,000 Rwf', period: '/mo', features: ['Unlimited Galleries', '10 GB Storage', 'Password Protection', 'Client Favorites', 'Priority Support', 'Custom Branding'], highlighted: false },
-              { name: 'Studio', price: '50,000 Rwf', period: '/mo', features: ['Everything in Pro','100 GB Storage', 'Dedicated Support', 'Custom Integrations'], highlighted: false },
+              { name: 'Basic', price: '5,000 Rwf', period: '/mo', features: ['Unlimited Galleries', '5 GB Storage', 'Basic Sharing', 'Email Support'], highlighted: true },
+              { name: 'Pro', price: '10,000 Rwf', period: '/mo', features: ['Unlimited Galleries', '10 GB Storage', 'Password Protection', 'Client Favorites', 'Priority Support', 'Custom Branding'], highlighted: false },
+              { name: 'Enterprise', price: '30,000 Rwf', period: '/mo', features: ['Everything in Pro','50 GB Storage', 'Dedicated Support', 'Custom Integrations'], highlighted: false },
             ].map((plan, i) => (
               <div key={i} className={`rounded-2xl p-8 ${plan.highlighted ? 'bg-gradient-to-br from-[var(--accent)] to-purple-600 text-white shadow-xl scale-105' : 'bg-[var(--bg-card)] border border-[var(--border-color)]'}`}>
                 {plan.highlighted && <span className="inline-block px-3 py-1 bg-white/20 rounded-full text-xs font-medium mb-4">Most Popular</span>}
