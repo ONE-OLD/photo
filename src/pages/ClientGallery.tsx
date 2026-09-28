@@ -1,9 +1,47 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { database, type Gallery, type Album, type Photo, type Comment } from '../services/database';
+import app from '../config/firebase';
 import { useToast } from '../context/AppContext';
 import { Button, Input, Modal, Spinner, EmptyState, Badge } from '../components/UI';
-import { Heart, Download, ChevronLeft, ChevronRight, X, Lock, MessageCircle, Send, Camera, ArrowLeft, ZoomIn, Share2 } from 'lucide-react';
+import { Heart, Download, ChevronLeft, ChevronRight, X, Lock, MessageCircle, Send, Camera, ArrowLeft, ZoomIn, Share2, Archive, ArrowDown } from 'lucide-react';
+
+function buildJustifiedRows(photos: Photo[], width: number, targetHeight: number) {
+  const rows: { photos: Photo[]; widths: number[]; height: number }[] = [];
+  if (width <= 0) return rows;
+
+  let rowPhotos: Photo[] = [];
+  let rowRatios: number[] = [];
+  let ratioTotal = 0;
+  const gap = width <= 480 ? 8 : 12;
+
+  const finishRow = (isLastRow: boolean) => {
+    if (!rowPhotos.length) return;
+    const availableWidth = Math.max(0, width - gap * (rowPhotos.length - 1));
+    const height = isLastRow ? targetHeight : availableWidth / ratioTotal;
+    rows.push({
+      photos: rowPhotos,
+      widths: isLastRow
+        ? rowRatios.map(ratio => ratio * height)
+        : rowRatios.map(ratio => (ratio / ratioTotal) * availableWidth),
+      height,
+    });
+    rowPhotos = [];
+    rowRatios = [];
+    ratioTotal = 0;
+  };
+
+  photos.forEach(photo => {
+    const ratio = photo.width > 0 && photo.height > 0 ? photo.width / photo.height : 1;
+    rowPhotos.push(photo);
+    rowRatios.push(ratio);
+    ratioTotal += ratio;
+    if (ratioTotal * targetHeight >= width) finishRow(false);
+  });
+
+  finishRow(true);
+  return rows;
+}
 
 export function ClientGalleryPage() {
   const { galleryId } = useParams<{ galleryId: string }>();
@@ -23,9 +61,27 @@ export function ClientGalleryPage() {
   const [newComment, setNewComment] = useState('');
   const [clientEmail] = useState(() => `client_${Math.random().toString(36).substring(2, 8)}@guest.com`);
   const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [galleryWidth, setGalleryWidth] = useState(0);
+  const [zipProgress, setZipProgress] = useState('');
+  const [zipBusy, setZipBusy] = useState(false);
+  const galleryGridRef = useRef<HTMLDivElement>(null);
   const { addToast } = useToast();
 
   const currentPhotos = selectedAlbum ? photos.filter(p => p.albumId === selectedAlbum) : photos;
+  const coverImageUrl = photos.find(photo => photo.id === gallery?.coverImageId)?.secureUrl || gallery?.coverImage || photos[0]?.secureUrl;
+  const targetRowHeight = galleryWidth < 600 ? 150 : galleryWidth < 900 ? 190 : 240;
+  const photoRows = buildJustifiedRows(currentPhotos, galleryWidth, targetRowHeight);
+
+  useEffect(() => {
+    const element = galleryGridRef.current;
+    if (!element) return;
+
+    const observer = new ResizeObserver(entries => {
+      setGalleryWidth(entries[0].contentRect.width);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [authorized, currentPhotos.length]);
 
   useEffect(() => {
     const load = async () => {
@@ -46,7 +102,6 @@ export function ClientGalleryPage() {
           ]);
           setAlbums(a as Album[]);
           setPhotos(p as Photo[]);
-          if ((a as Album[]).length > 0) setSelectedAlbum((a as Album[])[0].id);
 
           const favs = await database.getFavorites(galleryId);
           setFavorites((favs as any[]).filter(f => f.clientEmail === clientEmail).map(f => f.photoId));
@@ -71,7 +126,6 @@ export function ClientGalleryPage() {
       ]);
       setAlbums(a as Album[]);
       setPhotos(p as Photo[]);
-      if ((a as Album[]).length > 0) setSelectedAlbum((a as Album[])[0].id);
     } else {
       setPasswordError('Incorrect password');
     }
@@ -97,6 +151,75 @@ export function ClientGalleryPage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleDownloadAll = async () => {
+    if (!galleryId || !gallery || zipBusy || !gallery.allowDownloads) return;
+    const jobId = crypto.randomUUID();
+    const projectId = app.options.projectId;
+    if (!projectId) {
+      addToast('Firebase project is not configured for ZIP downloads.', 'error');
+      return;
+    }
+    const endpoint = `https://us-central1-${projectId}.cloudfunctions.net/downloadGalleryZip`;
+    const frameName = `gallery-zip-${jobId}`;
+    const iframe = document.createElement('iframe');
+    iframe.name = frameName;
+    iframe.title = 'Gallery ZIP download';
+    iframe.hidden = true;
+    document.body.appendChild(iframe);
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = endpoint;
+    form.target = frameName;
+    form.hidden = true;
+    for (const [name, value] of Object.entries({ galleryId, jobId, password })) {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = name;
+      input.value = value;
+      form.appendChild(input);
+    }
+    document.body.appendChild(form);
+    setZipBusy(true);
+    setZipProgress('Preparing ZIP...');
+    form.submit();
+    form.remove();
+
+    try {
+      const pollStartedAt = Date.now();
+      while (true) {
+        await new Promise(resolve => window.setTimeout(resolve, 1000));
+        const response = await fetch(`${endpoint}?jobId=${encodeURIComponent(jobId)}`);
+        if (response.status === 404 && Date.now() - pollStartedAt < 60_000) {
+          setZipProgress('Starting ZIP service...');
+          continue;
+        }
+        if (!response.ok) throw new Error(response.status === 404
+          ? 'ZIP download did not start. The download service may need deployment.'
+          : `Could not prepare this gallery ZIP (HTTP ${response.status}).`);
+        const status = await response.json() as { state: string; processed: number; total: number };
+        if (status.state === 'downloading') {
+          setZipProgress(`Preparing: ${status.processed}/${status.total} photos`);
+        } else if (status.state === 'creating-zip') {
+          setZipProgress('Creating ZIP...');
+        } else if (status.state === 'ready') {
+          setZipProgress('Download ready');
+          break;
+        } else if (status.state === 'error') {
+          throw new Error('Could not prepare this gallery ZIP.');
+        } else {
+          setZipProgress('Preparing ZIP...');
+        }
+      }
+    } catch (error) {
+      setZipProgress(error instanceof Error ? error.message : 'ZIP download failed.');
+      addToast(error instanceof Error ? error.message : 'ZIP download failed.', 'error');
+    } finally {
+      setZipBusy(false);
+      window.setTimeout(() => iframe.remove(), 60_000);
+    }
   };
 
   const handleAddComment = async () => {
@@ -192,9 +315,9 @@ export function ClientGalleryPage() {
     return (
       <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center px-4">
         <div className="w-full max-w-md text-center">
-          {gallery.coverImage && (
+          {coverImageUrl && (
             <div className="mb-8 rounded-2xl overflow-hidden shadow-xl">
-              <img src={gallery.coverImage} alt={gallery.title} className="w-full aspect-video object-cover" />
+              <img src={coverImageUrl} alt={gallery.title} className="w-full aspect-video object-cover" />
             </div>
           )}
           {!gallery.coverImage && (
@@ -218,17 +341,16 @@ export function ClientGalleryPage() {
 
   // Gallery view
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)]">
+    <div className="client-gallery-page min-h-screen bg-[var(--bg-primary)]">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-[var(--bg-primary)]/80 backdrop-blur-md border-b border-[var(--border-color)]">
+      <header className="client-gallery-header z-40">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[var(--accent)] to-purple-500 flex items-center justify-center">
               <Camera size={16} className="text-white" />
             </div>
             <div>
-              <h1 className="font-semibold text-[var(--text-primary)] text-sm">{gallery.title}</h1>
-              {gallery.clientName && <p className="text-xs text-[var(--text-muted)]">{gallery.clientName}</p>}
+              <h1 className="font-semibold text-white text-sm">{gallery.title}</h1>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -239,19 +361,39 @@ export function ClientGalleryPage() {
         </div>
       </header>
 
-      {/* Gallery Info */}
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        {gallery.coverImage && (
-          <div className="mb-6 rounded-2xl overflow-hidden shadow-lg">
-            <img src={gallery.coverImage} alt={gallery.title} className="w-full max-h-80 object-cover" />
+      <section className="gallery-cover-hero" aria-label={`${gallery.title} gallery cover`}>
+        {coverImageUrl && (
+          <img className="gallery-cover-image" src={coverImageUrl} alt={gallery.title} fetchPriority="high" />
+        )}
+        <div className="gallery-cover-shade" />
+        <div className="gallery-cover-copy">
+          {gallery.clientName && <p className="gallery-cover-author">{gallery.clientName}</p>}
+          <h1>{gallery.title}</h1>
+          {gallery.description && <p className="gallery-cover-description">{gallery.description}</p>}
+          <div className="gallery-cover-meta">
+            {gallery.eventDate && <span>{new Date(gallery.eventDate).toLocaleDateString()}</span>}
+            <span>{photos.length} photos</span>
+            {albums.length > 0 && <span>{albums.length} albums</span>}
+          </div>
+          <button className="gallery-view-button" onClick={() => document.getElementById('gallery-photos')?.scrollIntoView({ behavior: 'smooth' })}>
+            View Gallery <ArrowDown size={16} />
+          </button>
+        </div>
+      </section>
+
+      {/* Gallery photos */}
+      <div id="gallery-photos" className="max-w-7xl mx-auto px-4 py-8 scroll-mt-6">
+        {gallery.allowDownloads && (
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-[var(--text-muted)]">{photos.length} photos</div>
+            <div className="flex flex-wrap items-center gap-3">
+              {zipProgress && <span role="status" className="text-sm text-[var(--text-secondary)]">{zipProgress}</span>}
+              <Button onClick={handleDownloadAll} disabled={zipBusy || photos.length === 0}>
+                <Archive size={16} className="mr-2" />{zipBusy ? 'Preparing ZIP...' : 'Download All (.zip)'}
+              </Button>
+            </div>
           </div>
         )}
-        
-        <div className="flex flex-wrap items-center gap-4 mb-6 text-sm text-[var(--text-muted)]">
-          {gallery.eventDate && <span>📅 {new Date(gallery.eventDate).toLocaleDateString()}</span>}
-          <span>📷 {photos.length} photos</span>
-          {albums.length > 0 && <span>📁 {albums.length} albums</span>}
-        </div>
 
         {/* Albums Navigation */}
         {albums.length > 1 && (
@@ -271,11 +413,15 @@ export function ClientGalleryPage() {
         {currentPhotos.length === 0 ? (
           <EmptyState icon={<Camera size={48} />} title="No photos yet" description="Photos will appear here once uploaded." />
         ) : (
-          <div className="photo-masonry">
-            {currentPhotos.map((photo, index) => (
-              <div key={photo.id} className="photo-masonry-item">
-                <div className="relative group rounded-lg overflow-hidden bg-[var(--bg-tertiary)] cursor-pointer" onClick={() => openLightbox(photo, index)}>
-                  <img src={photo.thumbnailUrl} alt="" className="w-full block hover:opacity-90 transition-opacity" loading="lazy" />
+          <div ref={galleryGridRef} className="justified-gallery">
+            {photoRows.map((row, rowIndex) => (
+              <div key={`row-${rowIndex}`} className="justified-gallery-row">
+                {row.photos.map((photo, columnIndex) => {
+                  const index = currentPhotos.indexOf(photo);
+                  return (
+                  <div key={photo.id} className="justified-gallery-item" style={{ width: `${row.widths[columnIndex]}px`, height: `${row.height}px` }}>
+                <div className="relative group h-full rounded-lg overflow-hidden bg-[var(--bg-tertiary)] cursor-pointer" onClick={() => openLightbox(photo, index)}>
+                  <img src={photo.thumbnailUrl || photo.secureUrl} alt="" className="w-full h-full object-cover block hover:opacity-90 transition-opacity" loading="lazy" />
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-end justify-between p-3 opacity-0 group-hover:opacity-100">
                     <div className="flex gap-2">
                       {gallery.allowFavorites && (
@@ -296,6 +442,9 @@ export function ClientGalleryPage() {
                     </div>
                   )}
                 </div>
+              </div>
+                  );
+                })}
               </div>
             ))}
           </div>

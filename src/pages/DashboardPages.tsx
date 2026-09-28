@@ -5,7 +5,7 @@ import { useAuth, useToast, useTheme } from '../context/AppContext';
 import app, { auth } from '../config/firebase';
 import { database, formatRwf, MTN_MOMO_MERCHANT_CODE, MTN_MOMO_USSD_DIAL, type Gallery, type Client, type Activity, type Album, type Photo, type UserProfile, type PaymentRecord, type PlanId, type SubscriptionPlan } from '../services/database';
 import { Button, Input, Textarea, Select, Card, Badge, StatCard, PageHeader, SearchInput, Modal, ConfirmDialog, EmptyState, Spinner } from '../components/UI';
-import { Image, Users, Heart, FolderOpen, Plus, Edit, Trash2, Eye, EyeOff, Copy, ExternalLink, Share2, MoreVertical, Calendar, Clock, Archive, LayoutGrid, List, Lock, Shield, Camera, CreditCard, Smartphone } from 'lucide-react';
+import { Image, Users, Heart, FolderOpen, Plus, Edit, Trash2, Eye, EyeOff, Copy, ExternalLink, Share2, MoreVertical, Calendar, Clock, Archive, LayoutGrid, List, Lock, Shield, Camera, CreditCard, Smartphone, Check } from 'lucide-react';
 
 // DASHBOARD OVERVIEW
 export function DashboardOverview() {
@@ -1278,7 +1278,10 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
     });
   };
 
-  const handleUploadPhotos = async (files: FileList) => {
+  const handleUploadPhotos = async (
+    files: FileList,
+    onProgress: (progress: { percentage: number; current: number; total: number; fileName: string; filePercentage: number }) => void,
+  ) => {
     const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
     const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
@@ -1288,6 +1291,8 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
     }
 
     let uploaded = 0;
+    let completedBytes = 0;
+    const totalBytes = Array.from(files).reduce((total, file) => total + file.size, 0);
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const quotaError = await database.checkQuota(profileRef, 'storage', file.size);
@@ -1300,8 +1305,31 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
       formData.append('upload_preset', uploadPreset);
 
       try {
-        const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: 'POST', body: formData });
-        const data = await res.json();
+        const data = await new Promise<any>((resolve, reject) => {
+          const request = new XMLHttpRequest();
+          request.open('POST', `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`);
+          request.upload.onprogress = event => {
+            const filePercentage = event.lengthComputable ? Math.round((event.loaded / event.total) * 100) : 0;
+            const percentage = totalBytes > 0
+              ? Math.min(99, Math.round(((completedBytes + file.size * (filePercentage / 100)) / totalBytes) * 100))
+              : Math.round(((i + filePercentage / 100) / files.length) * 100);
+            onProgress({ percentage, current: i + 1, total: files.length, fileName: file.name, filePercentage });
+          };
+          request.onload = () => {
+            if (request.status < 200 || request.status >= 300) {
+              reject(new Error(`Cloudinary upload failed for ${file.name}.`));
+              return;
+            }
+            try {
+              resolve(JSON.parse(request.responseText));
+            } catch {
+              reject(new Error(`Cloudinary returned an invalid response for ${file.name}.`));
+            }
+          };
+          request.onerror = () => reject(new Error(`Network error while uploading ${file.name}.`));
+          request.onabort = () => reject(new Error(`Upload cancelled for ${file.name}.`));
+          request.send(formData);
+        });
 
         await database.addPhoto({
           galleryId,
@@ -1315,6 +1343,9 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
           bytes: data.bytes,
         }, profileRef);
         uploaded++;
+        completedBytes += file.size;
+        const percentage = totalBytes > 0 ? Math.round((completedBytes / totalBytes) * 100) : Math.round((uploaded / files.length) * 100);
+        onProgress({ percentage, current: uploaded, total: files.length, fileName: file.name, filePercentage: 100 });
       } catch (err: any) {
         if (err?.name === 'QuotaError') {
           addToast(err.message, 'error');
@@ -1333,6 +1364,16 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
     addToast('Photo deleted', 'success');
     const p = await database.getPhotosByGallery(galleryId);
     setPhotos(p as Photo[]);
+  };
+
+  const handleSetCover = async (photo: Photo) => {
+    try {
+      await database.updateGallery(galleryId, { coverImageId: photo.id, coverImage: photo.secureUrl });
+      setGallery(current => current ? { ...current, coverImageId: photo.id, coverImage: photo.secureUrl } : current);
+      addToast('Gallery cover updated', 'success');
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : 'Could not update gallery cover.', 'error');
+    }
   };
 
   if (loading) return <Spinner />;
@@ -1370,6 +1411,9 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
       {albums.length > 0 && (
         <div className="mb-6">
           <div className="flex gap-2 overflow-x-auto pb-2">
+            <button onClick={() => setSelectedAlbum('')} className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${!selectedAlbum ? 'bg-[var(--accent)] text-white' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}>
+              All Photos
+            </button>
             {albums.map(a => (
               <button key={a.id} onClick={() => setSelectedAlbum(a.id)} className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${selectedAlbum === a.id ? 'bg-[var(--accent)] text-white' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}>
                 {a.title}
@@ -1387,8 +1431,18 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
           {albumPhotos.map(photo => (
             <div key={photo.id} className="relative group aspect-square rounded-lg overflow-hidden bg-[var(--bg-tertiary)]">
               <img src={photo.thumbnailUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
-              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+              <div className="absolute inset-0 bg-black/35 sm:bg-black/0 sm:group-hover:bg-black/40 transition-all flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleSetCover(photo)}
+                    disabled={gallery.coverImageId === photo.id || (!gallery.coverImageId && gallery.coverImage === photo.secureUrl)}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-white px-2.5 py-2 text-xs font-semibold text-gray-900 disabled:bg-emerald-500 disabled:text-white"
+                    aria-label={gallery.coverImageId === photo.id || (!gallery.coverImageId && gallery.coverImage === photo.secureUrl) ? 'Current gallery cover' : 'Set as gallery cover'}
+                  >
+                    {gallery.coverImageId === photo.id || (!gallery.coverImageId && gallery.coverImage === photo.secureUrl) ? <><Check size={14} />Cover</> : 'Set cover'}
+                  </button>
                 <button onClick={() => handleDeletePhoto(photo.id)} className="p-2 rounded-full bg-red-500 text-white"><Trash2 size={14} /></button>
+                </div>
               </div>
             </div>
           ))}
@@ -1474,11 +1528,12 @@ function ShareGalleryModal({ isOpen, onClose, gallery }: { isOpen: boolean; onCl
 
 // Upload Modal
 function UploadModal({ isOpen, onClose, onUpload, albums, selectedAlbum, onSelectAlbum }: {
-  isOpen: boolean; onClose: () => void; onUpload: (files: FileList) => void; albums: Album[]; selectedAlbum: string; onSelectAlbum: (id: string) => void;
+  isOpen: boolean; onClose: () => void; onUpload: (files: FileList, onProgress: (progress: { percentage: number; current: number; total: number; fileName: string; filePercentage: number }) => void) => Promise<void>; albums: Album[]; selectedAlbum: string; onSelectAlbum: (id: string) => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
   const [files, setFiles] = useState<FileList | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState<{ percentage: number; current: number; total: number; fileName: string; filePercentage: number } | null>(null);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -1489,10 +1544,14 @@ function UploadModal({ isOpen, onClose, onUpload, albums, selectedAlbum, onSelec
   const handleUpload = async () => {
     if (!files || files.length === 0) return;
     setUploading(true);
-    await onUpload(files);
-    setUploading(false);
-    setFiles(null);
-    onClose();
+    setProgress({ percentage: 0, current: 1, total: files.length, fileName: files[0].name, filePercentage: 0 });
+    try {
+      await onUpload(files, setProgress);
+      setFiles(null);
+      onClose();
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -1523,8 +1582,28 @@ function UploadModal({ isOpen, onClose, onUpload, albums, selectedAlbum, onSelec
           </div>
         )}
 
+        {uploading && progress && (
+          <div className="space-y-2" role="status" aria-live="polite">
+            <div className="flex items-center justify-between gap-3 text-sm text-[var(--text-secondary)]">
+              <span className="min-w-0 truncate">Uploading {progress.current}/{progress.total}: {progress.fileName}</span>
+              <span className="shrink-0 font-semibold text-[var(--text-primary)]">{progress.percentage}%</span>
+            </div>
+            <div
+              className="h-2 overflow-hidden rounded-full bg-[var(--bg-tertiary)]"
+              role="progressbar"
+              aria-label="Total upload progress"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={progress.percentage}
+            >
+              <div className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-150" style={{ width: `${progress.percentage}%` }} />
+            </div>
+            <p className="text-xs text-[var(--text-muted)]">Current photo: {progress.filePercentage}%</p>
+          </div>
+        )}
+
         <div className="flex gap-3 justify-end">
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="secondary" onClick={onClose} disabled={uploading}>Cancel</Button>
           <Button onClick={handleUpload} loading={uploading} disabled={!files || files.length === 0}>Upload</Button>
         </div>
       </div>

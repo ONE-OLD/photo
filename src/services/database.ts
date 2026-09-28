@@ -105,6 +105,7 @@ export interface Gallery {
   clientId?: string;
   clientName?: string;
   clientEmail?: string;
+  coverImageId?: string;
   coverImage?: string;
   status: 'draft' | 'published' | 'archived';
   visibility: 'public' | 'private';
