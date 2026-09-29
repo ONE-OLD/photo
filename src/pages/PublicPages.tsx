@@ -229,7 +229,7 @@ export function PricingPage() {
             <h1 className="text-4xl sm:text-5xl font-bold text-[var(--text-primary)] mb-4">Simple Pricing</h1>
             <p className="text-lg text-[var(--text-secondary)]">Choose the plan that fits your photography business.</p>
           </div>
-          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
             {[
               { name: 'Free', price: '0 Rwf', period: '/mo', features: ['Unlimited Gallery', '1 GB Storage', 'Basic Sharing'], highlighted: false },
               { name: 'Starter', price: '5,000 Rwf', period: '/mo', features: ['Unlimited Galleries', '5 GB Storage', 'Basic Sharing', 'Email Support'], highlighted: true },

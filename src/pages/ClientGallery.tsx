@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { database, type Gallery, type Album, type Photo, type Comment } from '../services/database';
+import JSZip from 'jszip';
 import app from '../config/firebase';
 import { useToast } from '../context/AppContext';
 import { Button, Input, Modal, Spinner, EmptyState, Badge } from '../components/UI';
@@ -145,9 +146,13 @@ export function ClientGalleryPage() {
 
   const handleDownload = (photo: Photo) => {
     const link = document.createElement('a');
-    link.href = photo.secureUrl;
-    link.download = `photo_${photo.id}.${photo.format}`;
+    // Ensure Cloudinary forces a download instead of in-browser navigation
+    link.href = photo.secureUrl.includes('/image/upload/') && !photo.secureUrl.includes('/fl_attachment/')
+      ? photo.secureUrl.replace('/image/upload/', '/image/upload/fl_attachment/')
+      : photo.secureUrl;
+    link.download = `photo_${photo.id}.${photo.format || 'jpg'}`;
     link.target = '_blank';
+    link.rel = 'noopener noreferrer';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -155,70 +160,86 @@ export function ClientGalleryPage() {
 
   const handleDownloadAll = async () => {
     if (!galleryId || !gallery || zipBusy || !gallery.allowDownloads) return;
-    const jobId = crypto.randomUUID();
-    const projectId = app.options.projectId;
-    if (!projectId) {
-      addToast('Firebase project is not configured for ZIP downloads.', 'error');
+    const downloadPhotos = selectedAlbum ? photos.filter(p => p.albumId === selectedAlbum) : photos;
+    if (downloadPhotos.length === 0) {
+      addToast('No photos available to download in this gallery.', 'info');
       return;
     }
-    const endpoint = `https://us-central1-${projectId}.cloudfunctions.net/downloadGalleryZip`;
-    const frameName = `gallery-zip-${jobId}`;
-    const iframe = document.createElement('iframe');
-    iframe.name = frameName;
-    iframe.title = 'Gallery ZIP download';
-    iframe.hidden = true;
-    document.body.appendChild(iframe);
 
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = endpoint;
-    form.target = frameName;
-    form.hidden = true;
-    for (const [name, value] of Object.entries({ galleryId, jobId, password })) {
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = name;
-      input.value = value;
-      form.appendChild(input);
-    }
-    document.body.appendChild(form);
     setZipBusy(true);
-    setZipProgress('Preparing ZIP...');
-    form.submit();
-    form.remove();
+    setZipProgress('Starting download...');
 
     try {
-      const pollStartedAt = Date.now();
-      while (true) {
-        await new Promise(resolve => window.setTimeout(resolve, 1000));
-        const response = await fetch(`${endpoint}?jobId=${encodeURIComponent(jobId)}`);
-        if (response.status === 404 && Date.now() - pollStartedAt < 60_000) {
-          setZipProgress('Starting ZIP service...');
-          continue;
+      const zip = new JSZip();
+      let successCount = 0;
+      const total = downloadPhotos.length;
+
+      // Build Cloudinary URL with fl_attachment so the CDN sets permissive CORS + download headers.
+      // For non-Cloudinary URLs we try a plain fetch with cors mode.
+      const buildFetchUrl = (url: string) => {
+        if (url.includes('res.cloudinary.com') && url.includes('/image/upload/')) {
+          // Insert fl_attachment flag right after /upload/
+          return url.replace('/image/upload/', '/image/upload/fl_attachment/');
         }
-        if (!response.ok) throw new Error(response.status === 404
-          ? 'ZIP download did not start. The download service may need deployment.'
-          : `Could not prepare this gallery ZIP (HTTP ${response.status}).`);
-        const status = await response.json() as { state: string; processed: number; total: number };
-        if (status.state === 'downloading') {
-          setZipProgress(`Preparing: ${status.processed}/${status.total} photos`);
-        } else if (status.state === 'creating-zip') {
-          setZipProgress('Creating ZIP...');
-        } else if (status.state === 'ready') {
-          setZipProgress('Download ready');
-          break;
-        } else if (status.state === 'error') {
-          throw new Error('Could not prepare this gallery ZIP.');
-        } else {
-          setZipProgress('Preparing ZIP...');
-        }
+        return url;
+      };
+
+      // Download in parallel batches of 4 for speed without exhausting memory
+      const BATCH_SIZE = 4;
+      for (let i = 0; i < total; i += BATCH_SIZE) {
+        const batch = downloadPhotos.slice(i, i + BATCH_SIZE);
+        await Promise.all(
+          batch.map(async (photo, batchIdx) => {
+            const index = i + batchIdx;
+            try {
+              const fetchUrl = buildFetchUrl(photo.secureUrl);
+              const res = await fetch(fetchUrl, { mode: 'cors', credentials: 'omit' });
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              const blob = await res.blob();
+              const ext = (photo.format || 'jpg').replace(/[^a-z0-9]/gi, '').toLowerCase() || 'jpg';
+              const filename = `photo-${String(index + 1).padStart(3, '0')}.${ext}`;
+              zip.file(filename, blob);
+              successCount++;
+            } catch (fetchErr) {
+              console.warn(`Could not fetch photo ${photo.id}:`, fetchErr);
+            }
+          })
+        );
+        const currentDone = Math.min(i + BATCH_SIZE, total);
+        setZipProgress(`Downloading photos: ${currentDone}/${total}`);
       }
+
+      if (successCount === 0) {
+        throw new Error('Could not download any photos. Please check your internet connection.');
+      }
+
+      setZipProgress('Creating ZIP archive...');
+      const zipBlob = await zip.generateAsync(
+        { type: 'blob', compression: 'STORE' },
+        metadata => {
+          setZipProgress(`Creating ZIP: ${Math.round(metadata.percent)}%`);
+        }
+      );
+
+      const cleanTitle = (gallery.title || 'gallery').trim().replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'gallery';
+      const objectUrl = URL.createObjectURL(zipBlob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `${cleanTitle}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+
+      setZipProgress('Download complete!');
+      addToast(`Downloaded ${successCount} photos in ZIP!`, 'success');
     } catch (error) {
-      setZipProgress(error instanceof Error ? error.message : 'ZIP download failed.');
-      addToast(error instanceof Error ? error.message : 'ZIP download failed.', 'error');
+      const message = error instanceof Error ? error.message : 'ZIP download failed.';
+      setZipProgress(message);
+      addToast(message, 'error');
     } finally {
       setZipBusy(false);
-      window.setTimeout(() => iframe.remove(), 60_000);
+      setTimeout(() => setZipProgress(''), 4000);
     }
   };
 

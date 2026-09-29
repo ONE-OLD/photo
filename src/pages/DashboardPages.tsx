@@ -8,7 +8,7 @@ import { Button, Input, Textarea, Select, Card, Badge, StatCard, PageHeader, Sea
 import { Image, Users, Heart, FolderOpen, Plus, Edit, Trash2, Eye, EyeOff, Copy, ExternalLink, Share2, MoreVertical, Calendar, Clock, Archive, LayoutGrid, List, Lock, Shield, Camera, CreditCard, Smartphone, Check } from 'lucide-react';
 
 // DASHBOARD OVERVIEW
-export function DashboardOverview() {
+export function DashboardOverview({ onNavigate }: { onNavigate?: (page: string) => void }) {
   const [stats, setStats] = useState({ totalGalleries: 0, publishedGalleries: 0, totalClients: 0, totalPhotos: 0, totalAlbums: 0, totalFavorites: 0 });
   const [galleries, setGalleries] = useState<Gallery[]>([]);
   const [activity, setActivity] = useState<Activity[]>([]);
@@ -42,16 +42,16 @@ export function DashboardOverview() {
       <Card className="p-5 mb-6">
         <h3 className="font-semibold text-[var(--text-primary)] mb-3">Quick Actions</h3>
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm" onClick={() => {}}>
+          <Button variant="secondary" size="sm" onClick={() => onNavigate?.('galleries')}>
             <Plus size={14} className="mr-1.5" /> New Gallery
           </Button>
-          <Button variant="secondary" size="sm" onClick={() => {}}>
+          <Button variant="secondary" size="sm" onClick={() => onNavigate?.('clients')}>
             <Users size={14} className="mr-1.5" /> Add Client
           </Button>
-          <Button variant="secondary" size="sm" onClick={() => {}}>
+          <Button variant="secondary" size="sm" onClick={() => onNavigate?.('albums')}>
             <FolderOpen size={14} className="mr-1.5" /> Create Album
           </Button>
-          <Button variant="secondary" size="sm" onClick={() => {}}>
+          <Button variant="secondary" size="sm" onClick={() => onNavigate?.('galleries')}>
             <Image size={14} className="mr-1.5" /> Upload Photos
           </Button>
         </div>
@@ -117,6 +117,7 @@ export function GalleriesPage({ onEditGallery }: { onEditGallery: (id: string) =
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const { addToast } = useToast();
+  const { profile } = useAuth();
 
   const loadGalleries = useCallback(async () => {
     setLoading(true);
@@ -148,23 +149,35 @@ export function GalleriesPage({ onEditGallery }: { onEditGallery: (id: string) =
   });
 
   const handleDelete = async (id: string) => {
-    await database.deleteGallery(id);
-    addToast('Gallery deleted', 'success');
-    loadGalleries();
+    try {
+      await database.deleteGallery(id);
+      addToast('Gallery deleted', 'success');
+      loadGalleries();
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : 'Failed to delete gallery', 'error');
+    }
   };
 
   const handleDuplicate = async (gallery: Gallery) => {
-    const { id, createdAt, updatedAt, ...rest } = gallery;
-    await database.createGallery({ ...rest, title: `${gallery.title} (Copy)`, status: 'draft' });
-    addToast('Gallery duplicated', 'success');
-    loadGalleries();
+    try {
+      const { id, createdAt, updatedAt, ...rest } = gallery;
+      await database.createGallery({ ...rest, title: `${gallery.title} (Copy)`, status: 'draft' }, profile);
+      addToast('Gallery duplicated', 'success');
+      loadGalleries();
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : 'Failed to duplicate gallery', 'error');
+    }
   };
 
   const handleTogglePublish = async (gallery: Gallery) => {
-    const newStatus = gallery.status === 'published' ? 'draft' : 'published';
-    await database.updateGallery(gallery.id, { status: newStatus });
-    addToast(`Gallery ${newStatus === 'published' ? 'published' : 'unpublished'}`, 'success');
-    loadGalleries();
+    try {
+      const newStatus = gallery.status === 'published' ? 'draft' : 'published';
+      await database.updateGallery(gallery.id, { status: newStatus });
+      addToast(`Gallery ${newStatus === 'published' ? 'published' : 'unpublished'}`, 'success');
+      loadGalleries();
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : 'Failed to update gallery status', 'error');
+    }
   };
 
   return (
@@ -1252,6 +1265,7 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
   const [loading, setLoading] = useState(true);
   const [showShare, setShowShare] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
+  const [showEditDetails, setShowEditDetails] = useState(false);
   const [selectedAlbum, setSelectedAlbum] = useState<string>('');
   const { addToast } = useToast();
 
@@ -1398,7 +1412,8 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
           <span>📁 {albums.length} albums</span>
           {gallery.passwordProtected && <span>🔒 Password protected</span>}
         </div>
-        <div className="flex gap-2 mt-4">
+        <div className="flex flex-wrap gap-2 mt-4">
+          <Button variant="secondary" size="sm" onClick={() => setShowEditDetails(true)}><Edit size={14} className="mr-1" />Edit Details</Button>
           <Button variant="outline" size="sm" onClick={() => setShowShare(true)}><Share2 size={14} className="mr-1" />Share Gallery</Button>
           <Button variant="secondary" size="sm" onClick={() => setShowUpload(true)}><Plus size={14} className="mr-1" />Upload Photos</Button>
           <a href={`/gallery/${galleryId}`} target="_blank" rel="noopener noreferrer">
@@ -1454,6 +1469,18 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
 
       {/* Share Modal */}
       <ShareGalleryModal isOpen={showShare} onClose={() => setShowShare(false)} gallery={gallery} />
+
+      {/* Edit Details Modal */}
+      <CreateEditGalleryModal
+        isOpen={showEditDetails}
+        onClose={() => setShowEditDetails(false)}
+        gallery={gallery}
+        onSaved={async () => {
+          setShowEditDetails(false);
+          const g = await database.getGallery(galleryId);
+          setGallery(g as Gallery);
+        }}
+      />
     </div>
   );
 }

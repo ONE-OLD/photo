@@ -472,8 +472,7 @@ export const database = {
   async getPlans(): Promise<SubscriptionPlan[]> {
     const snapshot = await get(ref(db, 'pricing'));
     const stored = snapshot.val();
-    if (!stored) return DEFAULT_PLANS.map(p => ({ ...p }));
-    const storedArr: any[] = Array.isArray(stored) ? Object.values(stored) : [];
+    const storedArr: any[] = Array.isArray(stored) ? stored : (stored && typeof stored === 'object' ? Object.values(stored) : []);
     // Merge stored overrides onto defaults so new plan fields never go missing
     return DEFAULT_PLANS.map(def => {
       const s = storedArr.find((p: any) => p.id === def.id);
@@ -499,7 +498,7 @@ export const database = {
     const handler = (snapshot: any) => {
       const stored = snapshot.val();
       if (!stored) { callback(DEFAULT_PLANS.map(p => ({ ...p }))); return; }
-      const storedArr: any[] = Array.isArray(stored) ? Object.values(stored) : [];
+      const storedArr: any[] = Array.isArray(stored) ? stored : (stored && typeof stored === 'object' ? Object.values(stored) : []);
       callback(DEFAULT_PLANS.map(def => {
         const s = storedArr.find((p: any) => p.id === def.id);
         return s ? { ...def, priceRwf: Number(s.priceRwf ?? def.priceRwf), storageGb: Number(s.storageGb ?? def.storageGb), maxClients: Number(s.maxClients ?? def.maxClients), maxGalleries: Number(s.maxGalleries ?? def.maxGalleries), name: s.name || def.name } : { ...def };

@@ -70,7 +70,7 @@ function DashboardLayout() {
       return <GalleryEditorPage galleryId={editingGalleryId} onBack={() => goToPage('galleries')} />;
     }
     switch (visiblePage) {
-      case 'overview': return <DashboardOverview />;
+      case 'overview': return <DashboardOverview onNavigate={goToPage} />;
       case 'galleries': return <GalleriesPage onEditGallery={handleEditGallery} />;
       case 'clients': return <ClientsPage />;
       case 'albums': return <AlbumsPage />;
