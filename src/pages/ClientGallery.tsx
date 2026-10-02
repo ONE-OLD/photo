@@ -44,6 +44,67 @@ function buildJustifiedRows(photos: Photo[], width: number, targetHeight: number
   return rows;
 }
 
+function optimizeCloudinaryImage(url: string, width: number) {
+  if (!url.includes('res.cloudinary.com') || !url.includes('/image/upload/')) return url;
+  return url.replace('/image/upload/', `/image/upload/f_auto,q_auto,w_${width},c_limit/`);
+}
+
+function buildJpgDownloadUrl(url: string) {
+  if (!url.includes('res.cloudinary.com') || !url.includes('/image/upload/')) return url;
+  return url.replace('/image/upload/', '/image/upload/f_jpg,fl_attachment/');
+}
+
+const REMEMBERED_PASSWORD_DURATION = 30 * 24 * 60 * 60 * 1000;
+
+async function fingerprintPassword(password: string) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(password));
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function rememberedPasswordKey(galleryId: string) {
+  return `client-gallery-password:${galleryId}`;
+}
+
+function forgetRememberedPassword(galleryId: string) {
+  try {
+    localStorage.removeItem(rememberedPasswordKey(galleryId));
+  } catch {
+    // Browser storage may be unavailable.
+  }
+}
+
+async function hasRememberedPassword(galleryId: string, currentPassword: string) {
+  const key = rememberedPasswordKey(galleryId);
+  try {
+    const saved = localStorage.getItem(key);
+    if (!saved) return false;
+    const record = JSON.parse(saved) as { fingerprint?: string; expiresAt?: number };
+    if (!record.fingerprint || !record.expiresAt || record.expiresAt <= Date.now()) {
+      localStorage.removeItem(key);
+      return false;
+    }
+    if (record.fingerprint !== await fingerprintPassword(currentPassword)) {
+      localStorage.removeItem(key);
+      return false;
+    }
+    return true;
+  } catch {
+    forgetRememberedPassword(galleryId);
+    return false;
+  }
+}
+
+async function rememberPassword(galleryId: string, password: string) {
+  try {
+    localStorage.setItem(rememberedPasswordKey(galleryId), JSON.stringify({
+      fingerprint: await fingerprintPassword(password),
+      expiresAt: Date.now() + REMEMBERED_PASSWORD_DURATION,
+    }));
+  } catch {
+    // Continue without persistent access if browser storage is unavailable.
+  }
+}
+
 export function ClientGalleryPage() {
   const { galleryId } = useParams<{ galleryId: string }>();
   const [gallery, setGallery] = useState<Gallery | null>(null);
@@ -53,6 +114,7 @@ export function ClientGalleryPage() {
   const [loadError, setLoadError] = useState('');
   const [password, setPassword] = useState('');
   const [authorized, setAuthorized] = useState(false);
+  const [rememberPasswordChoice, setRememberPasswordChoice] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [selectedAlbum, setSelectedAlbum] = useState<string>('');
   const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
@@ -95,7 +157,8 @@ export function ClientGalleryPage() {
         const gal = g as Gallery;
         if (gal.status !== 'published') return;
         if (gal.expirationDate && new Date(gal.expirationDate) < new Date()) return;
-        if (!gal.passwordProtected) {
+        const remembered = gal.passwordProtected && await hasRememberedPassword(galleryId, gal.password || '');
+        if (!gal.passwordProtected || remembered) {
           setAuthorized(true);
           const [a, p] = await Promise.all([
             database.getAlbumsByGallery(galleryId),
@@ -104,8 +167,11 @@ export function ClientGalleryPage() {
           setAlbums(a as Album[]);
           setPhotos(p as Photo[]);
 
-          const favs = await database.getFavorites(galleryId);
-          setFavorites((favs as any[]).filter(f => f.clientEmail === clientEmail).map(f => f.photoId));
+          if (gal.allowFavorites) {
+            void database.getFavorites(galleryId)
+              .then(favs => setFavorites((favs as any[]).filter(f => f.clientEmail === clientEmail).map(f => f.photoId)))
+              .catch(error => console.warn('Could not load gallery favorites:', error));
+          }
         }
       } catch (error) {
         setLoadError(error instanceof Error ? error.message : 'Failed to load this gallery.');
@@ -119,6 +185,8 @@ export function ClientGalleryPage() {
   const handlePasswordSubmit = async () => {
     if (!gallery) return;
     if (gallery.password === password) {
+      if (rememberPasswordChoice) await rememberPassword(gallery.id, password);
+      else forgetRememberedPassword(gallery.id);
       setAuthorized(true);
       setPasswordError('');
       const [a, p] = await Promise.all([
@@ -146,11 +214,8 @@ export function ClientGalleryPage() {
 
   const handleDownload = (photo: Photo) => {
     const link = document.createElement('a');
-    // Ensure Cloudinary forces a download instead of in-browser navigation
-    link.href = photo.secureUrl.includes('/image/upload/') && !photo.secureUrl.includes('/fl_attachment/')
-      ? photo.secureUrl.replace('/image/upload/', '/image/upload/fl_attachment/')
-      : photo.secureUrl;
-    link.download = `photo_${photo.id}.${photo.format || 'jpg'}`;
+    link.href = buildJpgDownloadUrl(photo.secureUrl);
+    link.download = `photo_${photo.id}.jpg`;
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
     document.body.appendChild(link);
@@ -177,11 +242,7 @@ export function ClientGalleryPage() {
       // Build Cloudinary URL with fl_attachment so the CDN sets permissive CORS + download headers.
       // For non-Cloudinary URLs we try a plain fetch with cors mode.
       const buildFetchUrl = (url: string) => {
-        if (url.includes('res.cloudinary.com') && url.includes('/image/upload/')) {
-          // Insert fl_attachment flag right after /upload/
-          return url.replace('/image/upload/', '/image/upload/fl_attachment/');
-        }
-        return url;
+        return buildJpgDownloadUrl(url);
       };
 
       // Download in parallel batches of 4 for speed without exhausting memory
@@ -196,8 +257,7 @@ export function ClientGalleryPage() {
               const res = await fetch(fetchUrl, { mode: 'cors', credentials: 'omit' });
               if (!res.ok) throw new Error(`HTTP ${res.status}`);
               const blob = await res.blob();
-              const ext = (photo.format || 'jpg').replace(/[^a-z0-9]/gi, '').toLowerCase() || 'jpg';
-              const filename = `photo-${String(index + 1).padStart(3, '0')}.${ext}`;
+              const filename = `photo-${String(index + 1).padStart(3, '0')}.jpg`;
               zip.file(filename, blob);
               successCount++;
             } catch (fetchErr) {
@@ -338,7 +398,7 @@ export function ClientGalleryPage() {
         <div className="w-full max-w-md text-center">
           {coverImageUrl && (
             <div className="mb-8 rounded-2xl overflow-hidden shadow-xl">
-              <img src={coverImageUrl} alt={gallery.title} className="w-full aspect-video object-cover" />
+              <img src={optimizeCloudinaryImage(coverImageUrl, 1400)} alt={gallery.title} className="w-full aspect-video object-cover" />
             </div>
           )}
           {!gallery.coverImage && (
@@ -352,6 +412,10 @@ export function ClientGalleryPage() {
             <p className="text-sm text-[var(--text-secondary)] mb-4">This gallery is password protected</p>
             <div className="space-y-3">
               <Input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter gallery password" error={passwordError} onKeyDown={e => e.key === 'Enter' && handlePasswordSubmit()} />
+              <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                <input type="checkbox" checked={rememberPasswordChoice} onChange={e => setRememberPasswordChoice(e.target.checked)} className="rounded" />
+                Remember me for one month
+              </label>
               <Button onClick={handlePasswordSubmit} className="w-full" size="lg">View Gallery</Button>
             </div>
           </div>
@@ -384,7 +448,7 @@ export function ClientGalleryPage() {
 
       <section className="gallery-cover-hero" aria-label={`${gallery.title} gallery cover`}>
         {coverImageUrl && (
-          <img className="gallery-cover-image" src={coverImageUrl} alt={gallery.title} fetchPriority="high" />
+          <img className="gallery-cover-image" src={optimizeCloudinaryImage(coverImageUrl, 1920)} alt={gallery.title} fetchPriority="high" />
         )}
         <div className="gallery-cover-shade" />
         <div className="gallery-cover-copy">
@@ -442,7 +506,7 @@ export function ClientGalleryPage() {
                   return (
                   <div key={photo.id} className="justified-gallery-item" style={{ width: `${row.widths[columnIndex]}px`, height: `${row.height}px` }}>
                 <div className="relative group h-full rounded-lg overflow-hidden bg-[var(--bg-tertiary)] cursor-pointer" onClick={() => openLightbox(photo, index)}>
-                  <img src={photo.thumbnailUrl || photo.secureUrl} alt="" className="w-full h-full object-cover block hover:opacity-90 transition-opacity" loading="lazy" />
+                  <img src={optimizeCloudinaryImage(photo.thumbnailUrl || photo.secureUrl, 800)} alt="" className="w-full h-full object-cover block hover:opacity-90 transition-opacity" loading="lazy" decoding="async" />
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-end justify-between p-3 opacity-0 group-hover:opacity-100">
                     <div className="flex gap-2">
                       {gallery.allowFavorites && (

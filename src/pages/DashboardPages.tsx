@@ -1257,6 +1257,33 @@ export function AdminPage({ onNavigate }: { onNavigate?: (page: string) => void 
 }
 
 // GALLERY EDITOR PAGE
+async function convertImageToWebP(file: File): Promise<File> {
+  if (file.type === 'image/webp') return file;
+
+  const bitmap = await createImageBitmap(file);
+  const canvas = document.createElement('canvas');
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const context = canvas.getContext('2d');
+  if (!context) {
+    bitmap.close();
+    throw new Error('Could not prepare image for WebP conversion.');
+  }
+  context.drawImage(bitmap, 0, 0);
+  bitmap.close();
+
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(result => {
+      if (result) resolve(result);
+      else reject(new Error('Could not convert image to WebP.'));
+    }, 'image/webp', 0.9);
+  });
+  if (blob.type !== 'image/webp') throw new Error('WebP conversion is not supported by this browser.');
+
+  const baseName = file.name.replace(/\.[^.]+$/, '') || 'photo';
+  return new File([blob], `${baseName}.webp`, { type: 'image/webp', lastModified: file.lastModified });
+}
+
 export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; onBack: () => void }) {
   const { profile: profileRef } = useAuth();
   const [gallery, setGallery] = useState<Gallery | null>(null);
@@ -1308,7 +1335,14 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
     let completedBytes = 0;
     const totalBytes = Array.from(files).reduce((total, file) => total + file.size, 0);
     for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+      const originalFile = files[i];
+      let file: File;
+      try {
+        file = await convertImageToWebP(originalFile);
+      } catch (error) {
+        addToast(error instanceof Error ? error.message : `Failed to convert ${originalFile.name} to WebP.`, 'error');
+        continue;
+      }
       const quotaError = await database.checkQuota(profileRef, 'storage', file.size);
       if (quotaError) {
         addToast(quotaError, 'error');
@@ -1325,9 +1359,9 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
           request.upload.onprogress = event => {
             const filePercentage = event.lengthComputable ? Math.round((event.loaded / event.total) * 100) : 0;
             const percentage = totalBytes > 0
-              ? Math.min(99, Math.round(((completedBytes + file.size * (filePercentage / 100)) / totalBytes) * 100))
+              ? Math.min(99, Math.round(((completedBytes + originalFile.size * (filePercentage / 100)) / totalBytes) * 100))
               : Math.round(((i + filePercentage / 100) / files.length) * 100);
-            onProgress({ percentage, current: i + 1, total: files.length, fileName: file.name, filePercentage });
+            onProgress({ percentage, current: i + 1, total: files.length, fileName: originalFile.name, filePercentage });
           };
           request.onload = () => {
             if (request.status < 200 || request.status >= 300) {
@@ -1357,9 +1391,9 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
           bytes: data.bytes,
         }, profileRef);
         uploaded++;
-        completedBytes += file.size;
+        completedBytes += originalFile.size;
         const percentage = totalBytes > 0 ? Math.round((completedBytes / totalBytes) * 100) : Math.round((uploaded / files.length) * 100);
-        onProgress({ percentage, current: uploaded, total: files.length, fileName: file.name, filePercentage: 100 });
+        onProgress({ percentage, current: uploaded, total: files.length, fileName: originalFile.name, filePercentage: 100 });
       } catch (err: any) {
         if (err?.name === 'QuotaError') {
           addToast(err.message, 'error');
