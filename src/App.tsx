@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import { AppProvider, useAuth } from './context/AppContext';
 import { ToastContainer, Spinner, DashboardSidebar, DashboardHeader } from './components/UI';
 import { HomePage, FeaturesPage, PricingPage, AboutPage, ContactPage, LoginPage, RegisterPage, ForgotPasswordPage, PrivacyPage, TermsPage } from './pages/PublicPages';
@@ -157,6 +158,7 @@ function App() {
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AppRoutes />
         <ToastContainer />
+        <Analytics />
       </BrowserRouter>
     </AppProvider>
   );
