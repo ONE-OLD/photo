@@ -97,6 +97,24 @@ body {
 .animate-slide-up { animation: slideUp 0.5s ease forwards; }
 .animate-pulse-soft { animation: pulse-soft 2s ease-in-out infinite; }
 
+/* Stagger the homepage hero and authentication content as each page opens. */
+@keyframes pageContentEnter {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.page-load-sequence > * {
+  animation: pageContentEnter 650ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.page-load-sequence > :nth-child(2) { animation-delay: 100ms; }
+.page-load-sequence > :nth-child(3) { animation-delay: 200ms; }
+.page-load-sequence > :nth-child(4) { animation-delay: 300ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .page-load-sequence > * { animation: none; }
+}
+
 /* Skeleton loader */
 .skeleton {
   background: linear-gradient(90deg, var(--bg-tertiary) 25%, var(--bg-hover) 50%, var(--bg-tertiary) 75%);
@@ -149,6 +167,15 @@ body {
 
 .client-gallery-page {
   position: relative;
+}
+
+.photo-share-dialog {
+  margin: auto;
+}
+
+.photo-share-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
 }
 
 .client-gallery-header {

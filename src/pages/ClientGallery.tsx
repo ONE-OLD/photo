@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { database, type Gallery, type Album, type Photo, type Comment } from '../services/database';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { database, type Gallery, type Album, type Photo } from '../services/database';
 import JSZip from 'jszip';
 import app from '../config/firebase';
 import { useToast } from '../context/AppContext';
 import { Button, Input, Modal, Spinner, EmptyState, Badge } from '../components/UI';
+import { PhotoShareDialog } from '../components/PhotoShareDialog';
 import { Heart, Download, ChevronLeft, ChevronRight, X, Lock, MessageCircle, Send, Camera, ArrowLeft, ZoomIn, Share2, Archive, ArrowDown } from 'lucide-react';
 
 function buildJustifiedRows(photos: Photo[], width: number, targetHeight: number) {
@@ -107,6 +108,8 @@ async function rememberPassword(galleryId: string, password: string) {
 
 export function ClientGalleryPage() {
   const { galleryId } = useParams<{ galleryId: string }>();
+  const [searchParams] = useSearchParams();
+  const sharedPhotoId = searchParams.get('photo');
   const [gallery, setGallery] = useState<Gallery | null>(null);
   const [albums, setAlbums] = useState<Album[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -118,16 +121,22 @@ export function ClientGalleryPage() {
   const [passwordError, setPasswordError] = useState('');
   const [selectedAlbum, setSelectedAlbum] = useState<string>('');
   const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
+  const [sharePhoto, setSharePhoto] = useState<Photo | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [favorites, setFavorites] = useState<string[]>([]);
-  const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
+  const [commentBusy, setCommentBusy] = useState(false);
+  const [commentStatus, setCommentStatus] = useState('');
+  const commentSubmittingRef = useRef(false);
+  const commentPhotoRef = useRef<string | undefined>();
+  commentPhotoRef.current = lightboxPhoto?.id;
   const [clientEmail] = useState(() => `client_${Math.random().toString(36).substring(2, 8)}@guest.com`);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [galleryWidth, setGalleryWidth] = useState(0);
   const [zipProgress, setZipProgress] = useState('');
   const [zipBusy, setZipBusy] = useState(false);
   const galleryGridRef = useRef<HTMLDivElement>(null);
+  const openedSharedPhotoRef = useRef('');
   const { addToast } = useToast();
 
   const currentPhotos = selectedAlbum ? photos.filter(p => p.albumId === selectedAlbum) : photos;
@@ -304,25 +313,34 @@ export function ClientGalleryPage() {
   };
 
   const handleAddComment = async () => {
-    if (!newComment.trim() || !galleryId || !lightboxPhoto) return;
-    await database.addComment({
-      galleryId,
-      photoId: lightboxPhoto.id,
-      clientEmail,
-      clientName: 'Guest',
-      text: newComment,
-    });
-    setNewComment('');
-    const c = await database.getComments(galleryId, lightboxPhoto.id);
-    setComments(c as Comment[]);
-    addToast('Comment added', 'success');
+    if (!newComment.trim() || !galleryId || !lightboxPhoto || !gallery?.allowComments || commentSubmittingRef.current) return;
+    const photoId = lightboxPhoto.id;
+    const text = newComment.trim();
+    commentSubmittingRef.current = true;
+    setCommentBusy(true);
+    setCommentStatus('');
+    try {
+      await database.addComment({ galleryId, photoId, clientEmail, clientName: 'Guest', text });
+      if (commentPhotoRef.current === photoId) {
+        setNewComment('');
+        setCommentStatus('Comment sent to your photographer.');
+      }
+    } catch {
+      if (commentPhotoRef.current === photoId) setCommentStatus('Could not send your comment. Please try again.');
+    } finally {
+      commentSubmittingRef.current = false;
+      setCommentBusy(false);
+    }
   };
+
+  useEffect(() => {
+    setNewComment('');
+    setCommentStatus('');
+  }, [lightboxPhoto?.id]);
 
   const openLightbox = (photo: Photo, index: number) => {
     setLightboxPhoto(photo);
     setLightboxIndex(index);
-    // Load comments for this photo
-    database.getComments(galleryId!, photo.id).then(c => setComments(c as Comment[]));
   };
 
   const navigateLightbox = (direction: 'prev' | 'next') => {
@@ -331,12 +349,28 @@ export function ClientGalleryPage() {
       : (lightboxIndex - 1 + currentPhotos.length) % currentPhotos.length;
     setLightboxIndex(newIndex);
     setLightboxPhoto(currentPhotos[newIndex]);
-    database.getComments(galleryId!, currentPhotos[newIndex].id).then(c => setComments(c as Comment[]));
   };
+
+  // Open shared photos only after the gallery's access checks and photo loading.
+  useEffect(() => {
+    if (!sharedPhotoId) {
+      openedSharedPhotoRef.current = '';
+      return;
+    }
+    if (!authorized || !gallery || gallery.id !== galleryId || gallery.status !== 'published') return;
+    if (gallery.expirationDate && new Date(gallery.expirationDate) < new Date()) return;
+    const key = `${galleryId}:${sharedPhotoId}`;
+    if (openedSharedPhotoRef.current === key) return;
+    const index = photos.findIndex(photo => photo.id === sharedPhotoId && photo.galleryId === galleryId);
+    if (index < 0) return;
+    openedSharedPhotoRef.current = key;
+    setSelectedAlbum('');
+    openLightbox(photos[index], index);
+  }, [authorized, gallery, galleryId, photos, sharedPhotoId]);
 
   // Keyboard navigation for lightbox
   useEffect(() => {
-    if (!lightboxPhoto) return;
+    if (!lightboxPhoto || sharePhoto) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setLightboxPhoto(null);
       if (e.key === 'ArrowLeft') navigateLightbox('prev');
@@ -344,7 +378,7 @@ export function ClientGalleryPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [lightboxPhoto, lightboxIndex]);
+  }, [lightboxPhoto, lightboxIndex, sharePhoto]);
 
   // Loading state
   if (loading) {
@@ -521,6 +555,15 @@ export function ClientGalleryPage() {
                       </button>
                     )}
                   </div>
+                  <button
+                    type="button"
+                    onClick={event => { event.stopPropagation(); setSharePhoto(photo); }}
+                    aria-label={`Share photo ${index + 1}`}
+                    title="Share photo"
+                    className="absolute top-2 left-2 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-sm transition-colors hover:bg-black/75"
+                  >
+                    <Share2 size={18} />
+                  </button>
                   {favorites.includes(photo.id) && (
                     <div className="absolute top-2 right-2">
                       <Heart size={16} className="text-red-500" fill="currentColor" />
@@ -546,6 +589,9 @@ export function ClientGalleryPage() {
             </button>
             <span className="text-sm text-white/70">{lightboxIndex + 1} / {currentPhotos.length}</span>
             <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setSharePhoto(lightboxPhoto)} aria-label="Share photo" title="Share photo" className="p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10">
+                <Share2 size={20} />
+              </button>
               {gallery.allowFavorites && (
                 <button onClick={() => toggleFavorite(lightboxPhoto.id)} className={`p-2 rounded-lg ${favorites.includes(lightboxPhoto.id) ? 'text-red-500' : 'text-white/70 hover:text-white'} hover:bg-white/10`}>
                   <Heart size={20} fill={favorites.includes(lightboxPhoto.id) ? 'currentColor' : 'none'} />
@@ -586,26 +632,30 @@ export function ClientGalleryPage() {
             <div className="bg-black/50 border-t border-white/10 px-4 py-3 max-w-2xl mx-auto w-full">
               <div className="flex items-center gap-2 mb-2">
                 <MessageCircle size={14} className="text-white/50" />
-                <span className="text-xs text-white/50">Comments</span>
+                <span className="text-xs text-white/70">Send a private comment to your photographer</span>
               </div>
-              {comments.length > 0 && (
-                <div className="max-h-24 overflow-y-auto mb-2 space-y-1">
-                  {comments.map(c => (
-                    <div key={c.id} className="text-xs text-white/70">
-                      <span className="font-medium text-white/90">{c.clientName}:</span> {c.text}
-                    </div>
-                  ))}
-                </div>
-              )}
+              <p className="mb-2 text-xs text-white/50">Only the gallery owner can read your comment. It will not appear in this gallery.</p>
               <div className="flex gap-2">
-                <input value={newComment} onChange={e => setNewComment(e.target.value)} placeholder="Add a comment..." className="flex-1 bg-white/10 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/40 outline-none focus:border-white/30" onKeyDown={e => e.key === 'Enter' && handleAddComment()} />
-                <button onClick={handleAddComment} className="p-2 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]">
-                  <Send size={16} />
+                <input value={newComment} disabled={commentBusy} maxLength={2000} aria-label="Private comment for your photographer" onChange={e => setNewComment(e.target.value)} placeholder="Write to your photographer..." className="min-w-0 flex-1 bg-white/10 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/40 outline-none focus:border-white/30 disabled:opacity-50" onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) void handleAddComment(); }} />
+                <button type="button" onClick={handleAddComment} disabled={commentBusy || !newComment.trim()} aria-label={commentBusy ? 'Sending comment' : 'Send comment to photographer'} className="p-2 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed">
+                  {commentBusy ? <Spinner size="sm" /> : <Send size={16} />}
                 </button>
               </div>
+              {commentStatus && <p role="status" className="mt-2 text-xs text-white/80">{commentStatus}</p>}
             </div>
           )}
         </div>
+      )}
+      {sharePhoto && (
+        <PhotoShareDialog
+          key={sharePhoto.id}
+          photo={sharePhoto}
+          galleryTitle={gallery.title}
+          allowDownloads={gallery.allowDownloads}
+          passwordProtected={gallery.passwordProtected}
+          onClose={() => setSharePhoto(null)}
+          onDownload={handleDownload}
+        />
       )}
     </div>
   );

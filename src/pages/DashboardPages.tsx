@@ -5,7 +5,8 @@ import { useAuth, useToast, useTheme } from '../context/AppContext';
 import app, { auth } from '../config/firebase';
 import { database, formatRwf, MTN_MOMO_MERCHANT_CODE, MTN_MOMO_USSD_DIAL, type Gallery, type Client, type Activity, type Album, type Photo, type UserProfile, type PaymentRecord, type PlanId, type SubscriptionPlan } from '../services/database';
 import { Button, Input, Textarea, Select, Card, Badge, StatCard, PageHeader, SearchInput, Modal, ConfirmDialog, EmptyState, Spinner } from '../components/UI';
-import { Image, Users, Heart, FolderOpen, Plus, Edit, Trash2, Eye, EyeOff, Copy, ExternalLink, Share2, MoreVertical, Calendar, Clock, Archive, LayoutGrid, List, Lock, Shield, Camera, CreditCard, Smartphone, Check } from 'lucide-react';
+import { GalleryCommentsDialog } from '../components/GalleryCommentsDialog';
+import { Image, Users, Heart, FolderOpen, Plus, Edit, Trash2, Eye, EyeOff, Copy, ExternalLink, Share2, MoreVertical, Calendar, Clock, Archive, LayoutGrid, List, Lock, Shield, Camera, CreditCard, Smartphone, Check, MessageCircle } from 'lucide-react';
 
 // DASHBOARD OVERVIEW
 export function DashboardOverview({ onNavigate }: { onNavigate?: (page: string) => void }) {
@@ -1293,6 +1294,8 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
   const [showShare, setShowShare] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [showEditDetails, setShowEditDetails] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [commentsPhoto, setCommentsPhoto] = useState<Photo | null>(null);
   const [selectedAlbum, setSelectedAlbum] = useState<string>('');
   const { addToast } = useToast();
 
@@ -1450,6 +1453,7 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
           <Button variant="secondary" size="sm" onClick={() => setShowEditDetails(true)}><Edit size={14} className="mr-1" />Edit Details</Button>
           <Button variant="outline" size="sm" onClick={() => setShowShare(true)}><Share2 size={14} className="mr-1" />Share Gallery</Button>
           <Button variant="secondary" size="sm" onClick={() => setShowUpload(true)}><Plus size={14} className="mr-1" />Upload Photos</Button>
+          {gallery.ownerUid === profileRef?.uid && <Button variant="secondary" size="sm" onClick={() => { setCommentsPhoto(null); setShowComments(true); }}><MessageCircle size={14} className="mr-1" />Client comments</Button>}
           <a href={`/gallery/${galleryId}`} target="_blank" rel="noopener noreferrer">
             <Button variant="ghost" size="sm"><ExternalLink size={14} className="mr-1" />Preview</Button>
           </a>
@@ -1480,6 +1484,9 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
           {albumPhotos.map(photo => (
             <div key={photo.id} className="relative group aspect-square rounded-lg overflow-hidden bg-[var(--bg-tertiary)]">
               <img src={photo.thumbnailUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
+              {gallery.ownerUid === profileRef?.uid && (
+                <button type="button" onClick={() => { setCommentsPhoto(photo); setShowComments(true); }} aria-label="View private comments for this photo" title="View photo comments" className="absolute top-2 left-2 z-10 rounded-full bg-black/60 p-3 text-white hover:bg-black/80"><MessageCircle size={18} /></button>
+              )}
               <div className="absolute inset-0 bg-black/35 sm:bg-black/0 sm:group-hover:bg-black/40 transition-all flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
                 <div className="flex items-center gap-2">
                   <button
@@ -1499,6 +1506,7 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
       )}
 
       {/* Upload Modal */}
+      {showComments && gallery.ownerUid === profileRef?.uid && <GalleryCommentsDialog galleryId={galleryId} photos={photos} photo={commentsPhoto} onClose={() => setShowComments(false)} />}
       <UploadModal isOpen={showUpload} onClose={() => setShowUpload(false)} onUpload={handleUploadPhotos} albums={albums} selectedAlbum={selectedAlbum} onSelectAlbum={setSelectedAlbum} />
 
       {/* Share Modal */}

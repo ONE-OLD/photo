@@ -1,0 +1,12 @@
+# Kigalipix robots.txt
+# https://kigalipix.vercel.app
+
+User-agent: *
+Allow: /
+
+# Block authenticated / private areas from crawling
+Disallow: /dashboard
+Disallow: /dashboard/
+
+# Sitemap location
+Sitemap: https://kigalipix.vercel.app/sitemap.xml

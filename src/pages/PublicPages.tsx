@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth, useTheme } from '../context/AppContext';
 import { Button, Input, ThemeToggle } from '../components/UI';
@@ -88,25 +88,60 @@ function Footer() {
   );
 }
 
+function PageLoadingIndicator() {
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const image = new window.Image();
+    const finish = () => { if (active) setLoading(false); };
+    const timeout = window.setTimeout(finish, 8000);
+    image.onload = () => { void image.decode().catch(() => {}).then(finish); };
+    image.onerror = finish;
+    image.src = '/home-hero.jpg';
+    if (image.complete) finish();
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+      image.onload = null;
+      image.onerror = null;
+    };
+  }, []);
+
+  if (!loading) return null;
+
+  return (
+    <div role="status" aria-live="polite" aria-label="Loading page" className="fixed inset-0 z-[60] flex flex-col items-center justify-center gap-5 bg-[#10171b]/95 backdrop-blur-md text-white">
+      <div className="relative flex h-16 w-16 items-center justify-center" aria-hidden="true">
+        <span className="absolute inset-0 rounded-full border-2 border-white/15 border-t-amber-200 animate-spin motion-reduce:animate-none" />
+        <Camera size={26} className="text-amber-100" />
+      </div>
+      <p className="text-sm font-medium tracking-widest animate-pulse motion-reduce:animate-none">Loading...</p>
+    </div>
+  );
+}
+
 // HOME PAGE
 export function HomePage() {
   return (
     <div className="min-h-screen">
+      <PageLoadingIndicator />
       <PublicNav />
       
       {/* Hero */}
-      <section className="pt-32 pb-20 px-4 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-[var(--accent)]/5 to-purple-500/5" />
-        <div className="max-w-7xl mx-auto text-center relative">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[var(--bg-tertiary)] text-sm text-[var(--text-secondary)] mb-6">
+      <section className="pt-32 pb-20 px-4 relative isolate overflow-hidden flex min-h-[85svh] items-center bg-[#10171b]">
+        <img src="/home-hero.jpg" alt="" aria-hidden="true" fetchPriority="high" decoding="async" width={1672} height={941} className="absolute inset-0 h-full w-full object-cover object-[65%_center] sm:object-center" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/55 to-black/75" aria-hidden="true" />
+        <div className="page-load-sequence max-w-7xl w-full mx-auto text-center relative">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-white/20 bg-white/10 backdrop-blur-md text-sm text-white/90 mb-6">
             <Star size={14} className="text-yellow-500" />
             Trusted by professional photographers
           </div>
-          <h1 className="text-4xl sm:text-5xl lg:text-7xl font-bold text-[var(--text-primary)] leading-tight mb-6">
+          <h1 className="text-4xl sm:text-5xl lg:text-7xl font-bold text-white leading-tight mb-6 drop-shadow-lg">
             Deliver Beautiful<br />
-            <span className="bg-gradient-to-r from-[var(--accent)] to-purple-500 bg-clip-text text-transparent">Client Galleries</span>
+            <span className="bg-gradient-to-r from-amber-100 to-orange-300 bg-clip-text text-transparent">Client Galleries</span>
           </h1>
-          <p className="text-lg sm:text-xl text-[var(--text-secondary)] max-w-2xl mx-auto mb-10">
+          <p className="text-lg sm:text-xl text-white/85 max-w-2xl mx-auto mb-10">
             The professional photography platform that helps you upload, organize, and share stunning galleries with your clients.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -114,22 +149,10 @@ export function HomePage() {
               <Button size="lg">Start Free Trial <ChevronRight size={16} className="ml-1" /></Button>
             </Link>
             <Link to="/features">
-              <Button variant="secondary" size="lg">See Features</Button>
+              <Button variant="outline" size="lg" className="border-white/50! bg-white/10 text-white! hover:bg-white/20! hover:border-white! backdrop-blur-sm">See Features</Button>
             </Link>
           </div>
           
-          {/* Hero image placeholder */}
-          <div className="mt-16 relative">
-            <div className="bg-[var(--bg-tertiary)] rounded-2xl border border-[var(--border-color)] shadow-[var(--shadow-xl)] p-4 max-w-4xl mx-auto">
-              <div className="aspect-video rounded-xl bg-gradient-to-br from-[var(--accent)]/10 to-purple-500/10 flex items-center justify-center">
-                <div className="grid grid-cols-3 gap-3 p-8 w-full max-w-lg">
-                  {[...Array(6)].map((_, i) => (
-                    <div key={i} className="aspect-square rounded-lg bg-[var(--bg-card)] border border-[var(--border-color)] shadow-sm" style={{ opacity: 1 - i * 0.05 }} />
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -349,6 +372,15 @@ export function ContactPage() {
   );
 }
 
+function AuthBackground() {
+  return (
+    <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden="true">
+      <img src="/home-hero.jpg" alt="" fetchPriority="high" decoding="async" width={1672} height={941} className="h-full w-full scale-110 object-cover object-[65%_center] blur-md sm:object-center" />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/45 to-black/75" />
+    </div>
+  );
+}
+
 // LOGIN PAGE
 export function LoginPage() {
   const [email, setEmail] = useState('');
@@ -372,14 +404,16 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-[var(--bg-secondary)]">
-      <div className="w-full max-w-md">
+    <div className="relative isolate min-h-screen min-h-[100svh] flex items-center justify-center px-4 py-10 bg-[#10171b]">
+      <PageLoadingIndicator />
+      <AuthBackground />
+      <div className="page-load-sequence relative z-10 w-full max-w-md">
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-6">
             <img src="/lumina-logo.jpg" alt="Kigalipix" className="w-10 h-10 rounded-xl object-contain" />
           </Link>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Welcome back</h1>
-          <p className="text-[var(--text-muted)] mt-1">Sign in to your account</p>
+          <h1 className="text-2xl font-bold text-white drop-shadow-lg">Welcome back</h1>
+          <p className="text-white/80 mt-1">Sign in to your account</p>
         </div>
         <div className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-2xl p-8 shadow-[var(--shadow-md)]">
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -428,14 +462,16 @@ export function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-[var(--bg-secondary)]">
-      <div className="w-full max-w-md">
+    <div className="relative isolate min-h-screen min-h-[100svh] flex items-center justify-center px-4 py-10 bg-[#10171b]">
+      <PageLoadingIndicator />
+      <AuthBackground />
+      <div className="page-load-sequence relative z-10 w-full max-w-md">
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-6">
             <img src="/lumina-logo.jpg" alt="Kigalipix" className="w-10 h-10 rounded-xl object-contain" />
           </Link>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Create your account</h1>
-          <p className="text-[var(--text-muted)] mt-1">Start delivering beautiful galleries</p>
+          <h1 className="text-2xl font-bold text-white drop-shadow-lg">Create your account</h1>
+          <p className="text-white/80 mt-1">Start delivering beautiful galleries</p>
         </div>
         <div className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-2xl p-8 shadow-[var(--shadow-md)]">
           <form onSubmit={handleSubmit} className="space-y-5">

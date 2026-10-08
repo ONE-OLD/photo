@@ -422,19 +422,23 @@ export const database = {
     const id = generateId();
     const gallery = await this.getGallery(comment.galleryId) as Gallery | null;
     if (!gallery) throw new Error('Gallery not found.');
-    const data = { ...comment, id, ownerUid: gallery.ownerUid, createdAt: new Date().toISOString() };
+    if (gallery.status !== 'published' || !gallery.allowComments || (gallery.expirationDate && new Date(gallery.expirationDate) < new Date())) throw new Error('Comments are unavailable for this gallery.');
+    const text = comment.text.trim();
+    if (!text || text.length > 2000) throw new Error('Comments must contain between 1 and 2000 characters.');
+    const photoSnapshot = await get(ref(db, `photos/${comment.photoId}`));
+    if (photoSnapshot.val()?.galleryId !== gallery.id) throw new Error('Photo does not belong to this gallery.');
+    const data = { ...comment, text, id, ownerUid: gallery.ownerUid, createdAt: new Date().toISOString() };
     await set(ref(db, `comments/${id}`), data);
     return data;
   },
 
-  async getComments(galleryId: string, photoId?: string) {
-    const commentsRef = ref(db, 'comments');
-    const q = query(commentsRef, orderByChild('galleryId'), equalTo(galleryId));
-    const snapshot = await get(q);
-    if (!snapshot.val()) return [];
-    return Object.values(snapshot.val()).filter((c: any) => 
-      c.galleryId === galleryId && (!photoId || c.photoId === photoId)
-    );
+  async getComments(galleryId: string, photoId?: string): Promise<Comment[]> {
+    const uid = currentUid();
+    const gallery = await this.getGallery(galleryId) as Gallery | null;
+    if (!gallery || gallery.ownerUid !== uid) throw new Error('Only the gallery owner can read comments.');
+    const comments = await getOwnedRecords<Comment>('comments', uid);
+    return comments.filter(comment => comment.galleryId === galleryId && (!photoId || comment.photoId === photoId))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   },
 
   async deleteComment(id: string) {
@@ -449,7 +453,7 @@ export const database = {
 
   async getActivity(limit = 20) {
     const activity = await getOwnedRecords<Activity>('activity');
-    return activity.sort((a: any, b: any) => 
+    return activity.sort((a: any, b: any) =>
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     ).slice(0, limit);
   },
