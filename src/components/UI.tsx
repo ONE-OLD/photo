@@ -1,4 +1,4 @@
-import React, { useState, useEffect, type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes } from 'react';
+import React, { useState, useEffect, useId, useRef, type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 import { useTheme, useToast, useAuth } from '../context/AppContext';
 import { X, Check, AlertCircle, Info, AlertTriangle, Moon, Sun, Monitor, Menu, LogOut, Camera, LayoutDashboard, Image, Users, Settings, Shield, Heart, Activity, FolderOpen, CreditCard } from 'lucide-react';
@@ -37,14 +37,19 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 export function Input({ label, error, className = '', ...props }: InputProps) {
+  const generatedId = useId();
+  const id = props.id || generatedId;
   return (
     <div className="space-y-1.5">
-      {label && <label className="block text-sm font-medium text-[var(--text-secondary)]">{label}</label>}
+      {label && <label htmlFor={id} className="block text-sm font-medium text-[var(--text-secondary)]">{label}</label>}
       <input
+        id={id}
+        aria-invalid={!!error}
+        aria-describedby={error ? `${id}-error` : props["aria-describedby"]}
         className={`w-full px-4 py-2.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition-all outline-none ${error ? 'border-red-500' : ''} ${className}`}
         {...props}
       />
-      {error && <p className="text-sm text-red-500">{error}</p>}
+      {error && <p id={`${id}-error`} className="text-sm text-red-500">{error}</p>}
     </div>
   );
 }
@@ -56,14 +61,19 @@ interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement
 }
 
 export function Textarea({ label, error, className = '', ...props }: TextareaProps) {
+  const generatedId = useId();
+  const id = props.id || generatedId;
   return (
     <div className="space-y-1.5">
-      {label && <label className="block text-sm font-medium text-[var(--text-secondary)]">{label}</label>}
+      {label && <label htmlFor={id} className="block text-sm font-medium text-[var(--text-secondary)]">{label}</label>}
       <textarea
+        id={id}
+        aria-invalid={!!error}
+        aria-describedby={error ? `${id}-error` : props["aria-describedby"]}
         className={`w-full px-4 py-2.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition-all outline-none resize-none ${error ? 'border-red-500' : ''} ${className}`}
         {...props}
       />
-      {error && <p className="text-sm text-red-500">{error}</p>}
+      {error && <p id={`${id}-error`} className="text-sm text-red-500">{error}</p>}
     </div>
   );
 }
@@ -75,10 +85,13 @@ interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
 }
 
 export function Select({ label, options, className = '', ...props }: SelectProps) {
+  const generatedId = useId();
+  const id = props.id || generatedId;
   return (
     <div className="space-y-1.5">
-      {label && <label className="block text-sm font-medium text-[var(--text-secondary)]">{label}</label>}
+      {label && <label htmlFor={id} className="block text-sm font-medium text-[var(--text-secondary)]">{label}</label>}
       <select
+        id={id}
         className={`w-full px-4 py-2.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition-all outline-none ${className}`}
         {...props}
       >
@@ -95,27 +108,46 @@ interface ModalProps {
   title?: string;
   children: ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl';
+  closeDisabled?: boolean;
 }
 
-export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, size = 'md', closeDisabled = false }: ModalProps) {
+  const panel = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
-    if (isOpen) document.body.style.overflow = 'hidden';
-    else document.body.style.overflow = '';
-    return () => { document.body.style.overflow = ''; };
-  }, [isOpen]);
+    if (!isOpen) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusable = () => Array.from(panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]') || []).filter(el => el.getClientRects().length);
+    (focusable()[0] || panel.current)?.focus();
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.stopImmediatePropagation(); if (!closeDisabled) closeRef.current(); }
+      if (event.key === 'Tab') {
+        const items = focusable(); const first = items[0]; const last = items[items.length - 1];
+        if (!first) { event.preventDefault(); panel.current?.focus(); }
+        else if (event.shiftKey && (document.activeElement === first || !panel.current?.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && (document.activeElement === last || !panel.current?.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener('keydown', keydown);
+    return () => { document.body.style.overflow = overflow; document.removeEventListener('keydown', keydown); previous?.focus(); };
+  }, [isOpen, closeDisabled]);
 
   if (!isOpen) return null;
 
   const sizes = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' };
 
   return createPortal((
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className={`relative w-full ${sizes[size]} bg-[var(--bg-card)] rounded-2xl shadow-[var(--shadow-xl)] border border-[var(--border-color)] animate-fade-in max-h-[90vh] overflow-y-auto`}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby={title ? titleId : undefined} aria-label={title ? undefined : "Dialog"}>
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !closeDisabled && onClose()} />
+      <div ref={panel} tabIndex={-1} className={`relative w-full ${sizes[size]} bg-[var(--bg-card)] rounded-2xl shadow-[var(--shadow-xl)] border border-[var(--border-color)] animate-fade-in max-h-[90vh] overflow-y-auto`}>
         {title && (
           <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)]">
-            <h2 className="text-lg font-semibold text-[var(--text-primary)]">{title}</h2>
-            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)]" aria-label="Close">
+            <h2 id={titleId} className="text-lg font-semibold text-[var(--text-primary)]">{title}</h2>
+            <button disabled={closeDisabled} onClick={onClose} className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)]" aria-label="Close">
               <X size={18} />
             </button>
           </div>
@@ -140,10 +172,10 @@ export function ToastContainer() {
   return (
     <div className="fixed bottom-4 right-4 z-[100] space-y-2 max-w-sm">
       {toasts.map(toast => (
-        <div key={toast.id} className="toast-enter flex items-center gap-3 px-4 py-3 bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl shadow-[var(--shadow-lg)]">
+        <div key={toast.id} role="status" className="toast-enter flex items-center gap-3 px-4 py-3 bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl shadow-[var(--shadow-lg)]">
           {icons[toast.type]}
           <span className="text-sm text-[var(--text-primary)] flex-1">{toast.message}</span>
-          <button onClick={() => removeToast(toast.id)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+          <button aria-label="Dismiss notification" onClick={() => removeToast(toast.id)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)]">
             <X size={14} />
           </button>
         </div>
@@ -192,13 +224,13 @@ export function ThemeToggle() {
   
   return (
     <div className="flex items-center gap-1 bg-[var(--bg-tertiary)] rounded-lg p-1">
-      <button onClick={() => setTheme('light')} className={`p-1.5 rounded-md transition-all ${theme === 'light' ? 'bg-[var(--bg-card)] shadow-sm' : 'text-[var(--text-muted)]'}`} aria-label="Light mode">
+      <button onClick={() => setTheme('light')} className={`p-1.5 rounded-md transition-all ${theme === 'light' ? 'bg-[var(--bg-card)] shadow-sm' : 'text-[var(--text-muted)]'}`} aria-pressed={theme === "light"} aria-label="Light mode">
         <Sun size={14} />
       </button>
-      <button onClick={() => setTheme('dark')} className={`p-1.5 rounded-md transition-all ${theme === 'dark' ? 'bg-[var(--bg-card)] shadow-sm' : 'text-[var(--text-muted)]'}`} aria-label="Dark mode">
+      <button onClick={() => setTheme('dark')} className={`p-1.5 rounded-md transition-all ${theme === 'dark' ? 'bg-[var(--bg-card)] shadow-sm' : 'text-[var(--text-muted)]'}`} aria-pressed={theme === "dark"} aria-label="Dark mode">
         <Moon size={14} />
       </button>
-      <button onClick={() => setTheme('system')} className={`p-1.5 rounded-md transition-all ${theme === 'system' ? 'bg-[var(--bg-card)] shadow-sm' : 'text-[var(--text-muted)]'}`} aria-label="System theme">
+      <button onClick={() => setTheme('system')} className={`p-1.5 rounded-md transition-all ${theme === 'system' ? 'bg-[var(--bg-card)] shadow-sm' : 'text-[var(--text-muted)]'}`} aria-pressed={theme === "system"} aria-label="System theme">
         <Monitor size={14} />
       </button>
     </div>
@@ -277,10 +309,12 @@ export function DashboardSidebar({ currentPage, onNavigate, mobileOpen, onCloseM
         </div>
       </div>
       
+      <div className="p-4 flex items-center gap-3"><ProfileAvatar /><span className="text-sm truncate">{profile?.name}</span></div>
       <nav className="flex-1 p-3 space-y-1 sidebar-scroll overflow-y-auto">
         {navItems.filter(item => item.id !== 'admin' || profile?.role === 'admin').map(item => (
           <button
             key={item.id}
+            aria-current={currentPage === item.id ? "page" : undefined}
             onClick={() => { onNavigate(item.id); onCloseMobile(); }}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
               currentPage === item.id 
@@ -295,7 +329,7 @@ export function DashboardSidebar({ currentPage, onNavigate, mobileOpen, onCloseM
       </nav>
       
       <div className="p-3 border-t border-[var(--border-color)]">
-        <button onClick={() => { logout(); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-red-500 transition-all">
+        <button onClick={() => { if (window.dispatchEvent(new Event('studio-before-navigate', { cancelable: true }))) void logout(); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-red-500 transition-all">
           <LogOut size={18} />
           Logout
         </button>
@@ -311,14 +345,9 @@ export function DashboardSidebar({ currentPage, onNavigate, mobileOpen, onCloseM
       </aside>
       
       {/* Mobile sidebar */}
-      {mobileOpen && (
-        <div className="lg:hidden fixed inset-0 z-50">
-          <div className="fixed inset-0 bg-black/50" onClick={onCloseMobile} />
-          <aside className="fixed left-0 top-0 bottom-0 w-72 bg-[var(--bg-card)] shadow-xl">
-            {sidebarContent}
-          </aside>
-        </div>
-      )}
+      <Modal isOpen={mobileOpen} onClose={onCloseMobile} title="Studio navigation" size="sm">
+        <div className="h-[70vh]">{sidebarContent}</div>
+      </Modal>
     </>
   );
 }
@@ -334,7 +363,7 @@ export function DashboardHeader({ onMenuClick, title }: { onMenuClick: () => voi
           </button>
           {title && <h1 className="text-lg font-semibold text-[var(--text-primary)]">{title}</h1>}
         </div>
-        <ThemeToggle />
+        <div className="flex items-center gap-3"><ThemeToggle /><ProfileAvatar /></div>
       </div>
     </header>
   );
@@ -358,7 +387,8 @@ export function SearchInput({ value, onChange, placeholder = 'Search...' }: { va
   return (
     <div className="relative">
       <input
-        type="text"
+        type="search"
+        aria-label={placeholder}
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
@@ -384,4 +414,23 @@ export function ConfirmDialog({ isOpen, onClose, onConfirm, title, message, conf
       </div>
     </Modal>
   );
+}
+
+export function ProfileAvatar({ large = false }: { large?: boolean }) {
+  const { user, profile } = useAuth();
+  return <ProfileAvatarView large={large} name={profile?.name || user?.displayName || 'Photographer'} customPhoto={profile?.profileImage} googlePhoto={user?.photoURL} verified={user?.emailVerified === true} />;
+}
+
+// Keep presentation separate so verified/unverified and image fallbacks can be previewed safely.
+export function ProfileAvatarView({ large = false, name, customPhoto, googlePhoto, verified = false }: {
+  large?: boolean; name: string; customPhoto?: string | null; googlePhoto?: string | null; verified?: boolean;
+}) {
+  const [failed, setFailed] = useState<string[]>([]);
+  const source = [customPhoto, googlePhoto].find(url => url && !failed.includes(url));
+  return <span className={`profile-avatar ${large ? 'profile-avatar-large' : ''}`}>
+    <span className="profile-avatar-image">
+      {source ? <img src={source} alt={name} className="w-full h-full object-cover" onError={() => setFailed(previous => [...previous, source])} /> : <span role="img" aria-label={name}>{name.trim().split(/\s+/).map(part => part[0]).slice(0, 2).join('').toUpperCase() || '?'}</span>}
+    </span>
+    {verified && <span role="img" title="Email verified" aria-label="Email verified" className="profile-verified-badge"><Check aria-hidden="true" strokeWidth={3.5} /></span>}
+  </span>;
 }

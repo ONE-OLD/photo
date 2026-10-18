@@ -309,3 +309,264 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 /* Custom scrollbar for sidebar */
 .sidebar-scroll::-webkit-scrollbar { width: 4px; }
 .sidebar-scroll::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
+
+/* Studio dashboard surfaces follow the active light/dark theme. */
+.studio-welcome { background: radial-gradient(ellipse at top right, color-mix(in srgb, var(--accent) 14%, transparent), transparent 65%), var(--bg-card); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+
+.studio-dashboard .studio-welcome { position: relative; background: radial-gradient(ellipse at 95% 10%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 60%), var(--bg-card); }
+.studio-shortcut { transition: border-color 180ms, box-shadow 180ms; }
+.studio-shortcut:hover { border-color: var(--accent); box-shadow: var(--shadow-sm); }
+.studio-shortcut-icon { background: color-mix(in srgb, var(--accent) 9%, var(--bg-card)); }
+.studio-gallery-card { transition: box-shadow 200ms, border-color 200ms; }
+.studio-gallery-card:hover { box-shadow: var(--shadow-md); border-color: color-mix(in srgb, var(--accent) 45%, var(--border-color)); }
+.studio-activity-item:not(:last-child)::before { content: ''; position: absolute; left: 13px; top: 28px; bottom: -12px; width: 1px; background: var(--border-color); }
+
+/* Dashboard motion stays brief, uses composited properties, and never hides content permanently. */
+@keyframes studio-arrive {
+  from { opacity: 0; translate: 0 14px; }
+  to { opacity: 1; translate: 0 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .studio-dashboard .studio-welcome,
+  .studio-stats > *,
+  .studio-dashboard .studio-shortcut,
+  .studio-content > *,
+  .studio-dashboard .studio-gallery-card,
+  .studio-dashboard .studio-activity-item {
+    animation: studio-arrive 480ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  }
+  .studio-stats > * { animation-delay: 60ms; }
+  .studio-stats > :nth-child(2) { animation-delay: 110ms; }
+  .studio-stats > :nth-child(3) { animation-delay: 160ms; }
+  .studio-stats > :nth-child(4) { animation-delay: 210ms; }
+  .studio-dashboard .studio-shortcut { animation-delay: 140ms; }
+  .studio-dashboard .studio-shortcut:nth-child(2) { animation-delay: 190ms; }
+  .studio-dashboard .studio-shortcut:nth-child(3) { animation-delay: 240ms; }
+  .studio-content > * { animation-delay: 200ms; }
+  .studio-content > :nth-child(2) { animation-delay: 260ms; }
+  .studio-dashboard .studio-gallery-card { animation-delay: 240ms; }
+  .studio-dashboard .studio-gallery-card:nth-child(2) { animation-delay: 290ms; }
+  .studio-dashboard .studio-gallery-card:nth-child(3) { animation-delay: 340ms; }
+  .studio-dashboard .studio-gallery-card:nth-child(4) { animation-delay: 390ms; }
+  .studio-dashboard .studio-activity-item { animation-delay: 280ms; }
+  .studio-dashboard .studio-activity-item:nth-child(2) { animation-delay: 320ms; }
+  .studio-dashboard .studio-activity-item:nth-child(3) { animation-delay: 360ms; }
+  .studio-dashboard .studio-activity-item:nth-child(4) { animation-delay: 400ms; }
+  .studio-dashboard .studio-activity-item:nth-child(5) { animation-delay: 440ms; }
+  .studio-dashboard .studio-shortcut,
+  .studio-dashboard .studio-gallery-card,
+  .studio-dashboard .studio-stats > * {
+    transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+  }
+  .studio-dashboard .studio-shortcut-icon,
+  .studio-dashboard .studio-shortcut > span:last-child { transition: transform 220ms ease; }
+  .studio-dashboard .studio-shortcut:focus-visible,
+  .studio-dashboard .studio-gallery-card:focus-visible { transform: translateY(-3px); }
+  .studio-dashboard button:active { transform: scale(0.98); }
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .studio-dashboard .studio-shortcut:hover,
+  .studio-dashboard .studio-gallery-card:hover,
+  .studio-dashboard .studio-stats > *:hover { transform: translateY(-3px); }
+  .studio-dashboard .studio-shortcut:hover .studio-shortcut-icon { transform: rotate(-5deg); }
+  .studio-dashboard .studio-shortcut:hover > span:last-child { transform: translateX(3px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio-dashboard *, .studio-dashboard *::before, .studio-dashboard *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+  .studio-dashboard .studio-gallery-card img { transform: none !important; }
+}
+/* Subtle photographic lighting and surface effects, scoped to the studio. */
+.studio-dashboard .studio-welcome {
+  isolation: isolate;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--accent) 12%, transparent), var(--shadow-sm);
+}
+.studio-dashboard .studio-welcome::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 90% 18%, transparent 0 68px, color-mix(in srgb, var(--accent) 9%, transparent) 69px 70px, transparent 71px 110px, color-mix(in srgb, var(--accent) 6%, transparent) 111px 112px, transparent 113px),
+    linear-gradient(115deg, transparent 45%, color-mix(in srgb, var(--accent) 5%, transparent) 75%, transparent);
+}
+.studio-dashboard .studio-stats > * {
+  position: relative;
+  background-image: linear-gradient(135deg, color-mix(in srgb, var(--accent) 4%, transparent), transparent 65%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-primary) 4%, transparent), var(--shadow-sm);
+}
+.studio-dashboard .studio-stats > *::after {
+  content: '';
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  bottom: 0;
+  height: 2px;
+  pointer-events: none;
+  background: linear-gradient(90deg, var(--accent), transparent);
+  opacity: 0.35;
+}
+.studio-dashboard .studio-shortcut {
+  background-image: radial-gradient(ellipse at top left, color-mix(in srgb, var(--accent) 5%, transparent), transparent 75%);
+}
+.studio-dashboard .studio-shortcut-icon {
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--accent) 15%, transparent);
+}
+.studio-dashboard .studio-gallery-card > div:first-child::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 50%, rgb(0 0 0 / 24%));
+}
+.studio-dashboard .studio-gallery-card > div:first-child > span { z-index: 1; }
+.studio-dashboard .studio-shortcut:focus-visible,
+.studio-dashboard .studio-gallery-card:focus-visible {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent), var(--shadow-md);
+}
+@media (hover: hover) and (pointer: fine) {
+  .studio-dashboard .studio-shortcut:hover,
+  .studio-dashboard .studio-gallery-card:hover {
+    box-shadow: 0 8px 28px -12px color-mix(in srgb, var(--accent) 28%, transparent), var(--shadow-md);
+  }
+  .studio-dashboard .studio-activity-item:hover > div:first-child {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .studio-dashboard .studio-activity-item > div:first-child { transition: border-color 180ms ease, box-shadow 180ms ease; }
+}
+@media (forced-colors: active) {
+  .studio-dashboard .studio-welcome::before,
+  .studio-dashboard .studio-stats > *::after,
+  .studio-dashboard .studio-gallery-card > div:first-child::after { display: none; }
+}
+
+/* Studio depth: raised edges, directional lighting, and a CSS camera sculpture. */
+.studio-dashboard {
+  --studio-edge: color-mix(in srgb, var(--text-primary) 12%, var(--bg-card));
+  --studio-highlight: color-mix(in srgb, var(--text-primary) 7%, transparent);
+  --studio-depth: 0 3px 0 var(--studio-edge), 0 12px 24px -16px rgb(0 0 0 / 35%);
+}
+.studio-dashboard .studio-welcome {
+  box-shadow: inset 0 1px 0 var(--studio-highlight), 0 4px 0 var(--studio-edge), 0 20px 38px -28px rgb(0 0 0 / 45%);
+}
+.studio-dashboard .studio-stats > *,
+.studio-dashboard .studio-shortcut,
+.studio-dashboard .studio-gallery-card {
+  box-shadow: inset 0 1px 0 var(--studio-highlight), var(--studio-depth);
+}
+.studio-dashboard .studio-shortcut-icon {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 8%, var(--bg-card)), color-mix(in srgb, var(--accent) 18%, var(--bg-card)));
+  box-shadow: inset 0 1px 0 var(--studio-highlight), 0 3px 0 color-mix(in srgb, var(--accent) 24%, var(--bg-card)), 0 7px 12px -8px rgb(0 0 0 / 40%);
+}
+.studio-camera-scene {
+  width: 180px;
+  height: 102px;
+  perspective: 650px;
+  place-items: center;
+  position: relative;
+}
+.studio-camera-scene::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 120px;
+  height: 12px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgb(0 0 0 / 22%), transparent 70%);
+}
+.studio-camera {
+  width: 132px;
+  height: 76px;
+  position: relative;
+  border-radius: 15px;
+  transform: rotateX(12deg) rotateY(-22deg) rotateZ(-6deg);
+  background: linear-gradient(140deg, #56606e, #242c38 65%);
+  border: 1px solid #707b89;
+  box-shadow: inset 0 2px 0 #8c95a3, 6px 4px 0 #171e29, 12px 14px 22px -12px rgb(0 0 0 / 65%);
+}
+.studio-camera::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: 18px;
+  width: 37px;
+  height: 12px;
+  border-radius: 5px 5px 0 0;
+  background: linear-gradient(#687584, #384453);
+  box-shadow: inset 0 1px 0 #929dab;
+}
+.studio-camera-lens {
+  display: grid;
+  place-items: center;
+  position: absolute;
+  width: 66px;
+  height: 66px;
+  left: 36px;
+  top: 8px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #9eabb9, #263141 45%, #697b8b);
+  box-shadow: 3px 4px 0 #121b28, 5px 8px 10px rgb(0 0 0 / 40%);
+}
+.studio-camera-lens > span {
+  width: 48px;
+  height: 48px;
+  border: 5px solid #172638;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 28%, #c1e6f4 0 5%, #4a95ad 9%, #142f49 35%, #08141f 70%);
+  box-shadow: inset 0 0 0 2px #38617b;
+}
+.studio-camera-flash { position: absolute; right: 13px; top: 10px; width: 18px; height: 9px; border-radius: 3px; background: #d0dce6; box-shadow: inset 0 -2px 0 #8e9ba9; }
+.studio-camera-dot { position: absolute; left: 13px; top: 18px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .studio-dashboard .studio-gallery-card:hover,
+  .studio-dashboard .studio-shortcut:hover {
+    transform: perspective(1000px) rotateX(2deg) rotateY(-2deg) translateY(-5px);
+    box-shadow: inset 0 1px 0 var(--studio-highlight), 0 5px 0 var(--studio-edge), 0 22px 35px -22px color-mix(in srgb, var(--accent) 40%, #000);
+  }
+  .studio-dashboard .studio-stats > *:hover { transform: perspective(1000px) rotateX(3deg) translateY(-4px); }
+  .studio-camera { transition: transform 400ms cubic-bezier(0.22, 1, 0.36, 1); }
+  .studio-welcome:hover .studio-camera { transform: rotateX(5deg) rotateY(-12deg) rotateZ(-3deg) translateY(-4px); }
+  .studio-dashboard .studio-shortcut:active,
+  .studio-dashboard .studio-gallery-card:active { transform: perspective(1000px) translateY(1px); box-shadow: inset 0 1px 0 var(--studio-highlight), 0 1px 0 var(--studio-edge); }
+}
+@media (forced-colors: active) { .studio-camera-scene { display: none; } }
+
+/* Verification stays attached to the avatar, clear of the face and inside its bounds. */
+.profile-avatar { position: relative; display: inline-flex; flex-shrink: 0; width: 40px; height: 40px; vertical-align: middle; }
+.profile-avatar-image { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; overflow: hidden; border-radius: 50%; background: var(--bg-tertiary); color: var(--accent); font-size: 0.875rem; font-weight: 600; box-shadow: 0 0 0 2px var(--border-color); }
+.profile-avatar-large { width: 80px; height: 80px; }
+.profile-avatar-large .profile-avatar-image { font-size: 1.5rem; }
+.profile-verified-badge { position: absolute; display: grid; place-items: center; right: -1px; bottom: -1px; width: 18px; height: 18px; border: 2px solid var(--bg-card); border-radius: 50%; background: #2563eb; color: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 18%); }
+.profile-verified-badge svg { width: 11px; height: 11px; }
+.profile-avatar-large .profile-verified-badge { right: 2px; bottom: 2px; width: 24px; height: 24px; border-width: 3px; }
+.profile-avatar-large .profile-verified-badge svg { width: 14px; height: 14px; }
+@media (forced-colors: active) { .profile-verified-badge { background: Highlight; color: HighlightText; border-color: Canvas; } }
+/* A shared, responsive entry to the photography studio. */
+.auth-page { min-height: 100svh; display: grid; place-items: center; padding: clamp(16px, 4vw, 56px); background: radial-gradient(ellipse at 0 0, color-mix(in srgb, var(--accent) 10%, transparent), transparent 60%), var(--bg-secondary); }
+.auth-shell { display: grid; grid-template-columns: 1fr 1fr; width: 100%; max-width: 1120px; overflow: hidden; border: 1px solid var(--border-color); border-radius: 24px; background: var(--bg-card); box-shadow: var(--shadow-xl); }
+.auth-story { position: relative; isolation: isolate; display: flex; flex-direction: column; padding: clamp(32px, 4vw, 52px); color: white; background: #17252c; }
+.auth-story-image, .auth-story-shade { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -1; }
+.auth-story-image { object-position: 65% center; }
+.auth-story-shade { background: linear-gradient(180deg, rgb(5 17 22 / 30%), rgb(5 17 22 / 55%) 35%, rgb(5 17 22 / 94%)); }
+.auth-story-label { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 999px; border: 1px solid rgb(255 255 255 / 22%); background: rgb(12 24 32 / 45%); font-size: 11px; color: #fff; }
+.auth-form-panel { padding: 28px clamp(24px, 4vw, 48px); min-width: 0; }
+.auth-form-content { max-width: 390px; margin: 0 auto; padding-top: 12px; }
+.auth-form-content input { min-height: 46px; }
+.auth-google-button { min-height: 48px; background: #fff; color: #1f1f1f; border: 1px solid #747775; border-radius: 10px; font-weight: 500; }
+.auth-google-button:hover { background: #f5f7fa; color: #1f1f1f; }
+.auth-google-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.auth-divider { display: flex; align-items: center; gap: 14px; margin: 23px 0; color: var(--text-secondary); font-size: 12px; }
+.auth-divider::before, .auth-divider::after { content: ''; height: 1px; flex: 1; background: var(--border-color); }
+@media (max-width: 1023px) { .auth-shell { grid-template-columns: 1fr; max-width: 500px; } .auth-story { display: none; } .auth-form-panel { padding: 24px; } .auth-form-content { padding-top: 0; } }
+@media (max-width: 380px) { .auth-page { padding: 12px; } .auth-form-panel { padding: 20px 16px; } }
+@media (prefers-reduced-motion: no-preference) { .auth-shell { animation: studio-arrive 400ms ease-out backwards; } }

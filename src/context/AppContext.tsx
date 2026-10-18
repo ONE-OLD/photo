@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { auth } from '../config/firebase';
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail, type User } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail, type User } from 'firebase/auth';
 import { database, type UserProfile } from '../services/database';
 
 // Toast types
@@ -16,6 +16,8 @@ interface AuthContextType {
   profile: UserProfile | null;
   loading: boolean;
   isAdmin: boolean;
+  googleLogin: () => Promise<void>;
+  authBusy: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -43,6 +45,8 @@ const ThemeContext = createContext<ThemeContextType | null>(null);
 const ToastContext = createContext<ToastContextType | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  const authLock = useRef(false);
+  const [authBusy, setAuthBusy] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -112,13 +116,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return unsubscribe;
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const authenticate = async (action: () => Promise<void>) => {
+    if (authLock.current) throw new Error('Sign-in is already in progress.');
+    authLock.current = true; setAuthBusy(true);
+    try { await action(); } finally { authLock.current = false; setAuthBusy(false); }
+  };
+  const googleLogin = () => authenticate(async () => {
+    try {
+      const credential = await signInWithPopup(auth, new GoogleAuthProvider());
+      let existing = await database.getUserProfile(credential.user.uid);
+      if (!existing) {
+        existing = { uid: credential.user.uid, email: credential.user.email || '', name: credential.user.displayName || 'Photographer', role: 'client', subscriptionPlan: 'free', createdAt: new Date().toISOString() };
+        await database.createUserProfile(credential.user.uid, existing);
+      }
+      setProfile(existing);
+    } catch (error: any) {
+      const messages: Record<string, string> = {
+        'auth/popup-blocked': 'Your browser blocked Google sign-in. Allow popups for this site and try again.',
+        'auth/popup-closed-by-user': 'Google sign-in was closed. Please try again when ready.',
+        'auth/cancelled-popup-request': 'Another sign-in is already open. Complete it first.',
+        'auth/unauthorized-domain': 'Google sign-in is unavailable on this domain. Ask the studio administrator to authorize it in Firebase.',
+        'auth/operation-not-allowed': 'Google sign-in must be enabled in Firebase Authentication.',
+        'auth/account-exists-with-different-credential': 'This email already uses another sign-in method. Sign in with your existing method to keep your account.',
+        'auth/network-request-failed': 'Could not connect. Check your internet connection and try again.',
+      };
+      throw new Error(messages[error.code] || 'Google sign-in failed. Please try again.');
+    }
+  });
+  const login = (email: string, password: string) => authenticate(async () => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
     const userProfile = await database.getUserProfile(cred.user.uid);
     setProfile(userProfile);
-  };
+  });
 
-  const register = async (email: string, password: string, name: string) => {
+  const register = (email: string, password: string, name: string) => authenticate(async () => {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     const newProfile: UserProfile = {
       uid: cred.user.uid,
@@ -130,7 +161,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
     await database.createUserProfile(cred.user.uid, newProfile);
     setProfile(newProfile);
-  };
+  });
 
   const logout = async () => {
     await signOut(auth);
@@ -151,7 +182,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const isAdmin = profile?.role === 'admin';
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, isAdmin, login, register, logout, resetPassword, refreshProfile }}>
+    <AuthContext.Provider value={{ user, profile, loading, isAdmin, googleLogin, authBusy, login, register, logout, resetPassword, refreshProfile }}>
       <ThemeContext.Provider value={{ theme, resolvedTheme, setTheme }}>
         <ToastContext.Provider value={{ toasts, addToast, removeToast }}>
           {children}

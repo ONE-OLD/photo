@@ -1,15 +1,18 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { EmailAuthProvider, reauthenticateWithCredential, sendPasswordResetEmail, updatePassword } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { useAuth, useToast, useTheme } from '../context/AppContext';
 import app, { auth } from '../config/firebase';
 import { database, formatRwf, MTN_MOMO_MERCHANT_CODE, MTN_MOMO_USSD_DIAL, type Gallery, type Client, type Activity, type Album, type Photo, type UserProfile, type PaymentRecord, type PlanId, type SubscriptionPlan } from '../services/database';
-import { Button, Input, Textarea, Select, Card, Badge, StatCard, PageHeader, SearchInput, Modal, ConfirmDialog, EmptyState, Spinner } from '../components/UI';
+import { ProfileAvatar, Button, Input, Textarea, Select, Card, Badge, StatCard, PageHeader, SearchInput, Modal, ConfirmDialog, EmptyState, Spinner } from '../components/UI';
+import { ManageSubscriptionDialog } from '../components/ManageSubscriptionDialog';
 import { GalleryCommentsDialog } from '../components/GalleryCommentsDialog';
 import { Image, Users, Heart, FolderOpen, Plus, Edit, Trash2, Eye, EyeOff, Copy, ExternalLink, Share2, MoreVertical, Calendar, Clock, Archive, LayoutGrid, List, Lock, Shield, Camera, CreditCard, Smartphone, Check, MessageCircle } from 'lucide-react';
 
 // DASHBOARD OVERVIEW
-export function DashboardOverview({ onNavigate }: { onNavigate?: (page: string) => void }) {
+export function DashboardOverview({ onNavigate }: { onNavigate?: (page: string, galleryId?: string) => void }) {
+  const { profile } = useAuth();
+  const [loadError, setLoadError] = useState(false);
   const [stats, setStats] = useState({ totalGalleries: 0, publishedGalleries: 0, totalClients: 0, totalPhotos: 0, totalAlbums: 0, totalFavorites: 0 });
   const [galleries, setGalleries] = useState<Gallery[]>([]);
   const [activity, setActivity] = useState<Activity[]>([]);
@@ -19,87 +22,77 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (page: string) 
     const load = async () => {
       const [s, g, a] = await Promise.all([database.getStats(), database.getGalleries(), database.getActivity()]);
       setStats(s);
-      setGalleries((g as Gallery[]).sort((x: Gallery, y: Gallery) => new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime()).slice(0, 5));
+      setGalleries((g as Gallery[]).sort((x: Gallery, y: Gallery) => new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime()).slice(0, 4));
       setActivity(a as Activity[]);
       setLoading(false);
     };
-    load();
+    load().catch(() => { setLoadError(true); setLoading(false); });
   }, []);
 
   if (loading) return <Spinner />;
+  if (loadError) return <EmptyState title="Could not load your studio" description="Check your connection and reload to try again." action={<Button onClick={() => window.location.reload()}>Reload</Button>} />;
 
   return (
-    <div className="animate-fade-in">
-      <PageHeader title="Dashboard" description="Welcome back! Here's an overview of your platform." />
+    <div className="studio-dashboard mx-auto max-w-[1440px]">
+      <section className="studio-welcome mb-8 flex flex-col lg:flex-row lg:items-center gap-6 p-6 sm:p-8 rounded-2xl border border-[var(--border-color)]">
+        <ProfileAvatar large /><div className="flex-1"><p className="text-xs uppercase tracking-[0.2em] text-[var(--accent)] font-semibold mb-2">Your creative studio</p><h1 className="text-3xl sm:text-4xl lg:text-[2.6rem] font-semibold tracking-tight">Welcome back, {profile?.name?.split(' ')[0] || 'Photographer'}.</h1><p className="mt-3 text-[var(--text-secondary)] max-w-xl">A little less admin. More room to create. Your collections, clients, and next great delivery start here.</p></div>
+        <div className="flex flex-col gap-3 lg:items-end"><div aria-hidden="true" className="studio-camera-scene hidden xl:grid"><div className="studio-camera"><span className="studio-camera-flash" /><span className="studio-camera-lens"><span /></span><span className="studio-camera-dot" /></div></div><span className="text-xs font-medium text-[var(--text-muted)]">{profile?.studioName || "KigaliPix Studio"}</span><Button onClick={() => onNavigate?.('galleries')}>Open galleries <ExternalLink size={15} className="ml-2" /></Button></div>
+      </section>
       
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="studio-stats grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatCard title="Total Galleries" value={stats.totalGalleries} icon={<Image size={20} />} />
         <StatCard title="Published" value={stats.publishedGalleries} icon={<Eye size={20} />} />
         <StatCard title="Clients" value={stats.totalClients} icon={<Users size={20} />} />
         <StatCard title="Photos" value={stats.totalPhotos} icon={<FolderOpen size={20} />} />
       </div>
 
-      {/* Quick Actions */}
-      <Card className="p-5 mb-6">
-        <h3 className="font-semibold text-[var(--text-primary)] mb-3">Quick Actions</h3>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm" onClick={() => onNavigate?.('galleries')}>
-            <Plus size={14} className="mr-1.5" /> New Gallery
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => onNavigate?.('clients')}>
-            <Users size={14} className="mr-1.5" /> Add Client
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => onNavigate?.('albums')}>
-            <FolderOpen size={14} className="mr-1.5" /> Create Album
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => onNavigate?.('galleries')}>
-            <Image size={14} className="mr-1.5" /> Upload Photos
-          </Button>
+      <section aria-labelledby="studio-shortcuts" className="mb-8">
+        <h2 id="studio-shortcuts" className="text-xs uppercase tracking-[0.16em] font-semibold text-[var(--text-muted)] mb-3">Around your studio</h2>
+        <div className="grid sm:grid-cols-3 gap-3">
+          {[
+            { page: 'clients', label: 'Clients', detail: 'Keep every connection close', count: stats.totalClients, icon: Users },
+            { page: 'albums', label: 'Albums', detail: 'Give each story its own space', count: stats.totalAlbums, icon: FolderOpen },
+            { page: 'favorites', label: 'Favorites', detail: 'See the moments they love', count: stats.totalFavorites, icon: Heart },
+          ].map(({ page, label, detail, count, icon: Icon }) => <button key={page} onClick={() => onNavigate?.(page)} className="studio-shortcut flex items-center gap-4 p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-card)] text-left">
+            <span className="studio-shortcut-icon rounded-xl p-3 text-[var(--accent)]"><Icon size={20} /></span><span className="flex-1 min-w-0"><span className="block font-semibold">{label} <span className="ml-1 text-xs font-normal text-[var(--text-muted)]">{count.toLocaleString()}</span></span><span className="block text-xs text-[var(--text-muted)] mt-1">{detail}</span></span><span aria-hidden="true" className="text-[var(--text-muted)]">&rarr;</span>
+          </button>)}
         </div>
-      </Card>
+      </section>
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        <Card className="p-5">
-          <h3 className="font-semibold text-[var(--text-primary)] mb-4">Recent Galleries</h3>
+      <div className="studio-content grid xl:grid-cols-[2fr_1fr] gap-6">
+        <Card className="p-4 sm:p-6">
+          <div className="flex items-center justify-between gap-3 mb-5"><div><h2 className="text-lg font-semibold tracking-tight">Recent galleries</h2><p className="mt-1 text-xs text-[var(--text-muted)]">Your latest stories, all in one place.</p></div><Button variant="ghost" size="sm" onClick={() => onNavigate?.('galleries')}>View all <span aria-hidden="true" className="ml-2">&rarr;</span></Button></div>
           {galleries.length === 0 ? (
-            <p className="text-sm text-[var(--text-muted)]">No galleries yet. Create your first gallery!</p>
+            <EmptyState icon={<Camera size={36} />} title="Make room for your next story" description="Start with a private gallery and build a beautiful delivery for your client." action={<Button onClick={() => onNavigate?.('galleries')}>Explore galleries</Button>} />
           ) : (
-            <div className="space-y-3">
+            <div className="grid sm:grid-cols-2 gap-4">
               {galleries.map(g => (
-                <div key={g.id} className="flex items-center gap-3 p-3 rounded-lg bg-[var(--bg-tertiary)]">
-                  <div className="w-10 h-10 rounded-lg bg-[var(--accent)]/10 flex items-center justify-center flex-shrink-0">
-                    <Image size={16} className="text-[var(--accent)]" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-[var(--text-primary)] truncate">{g.title}</p>
-                    <p className="text-xs text-[var(--text-muted)]">{new Date(g.createdAt).toLocaleDateString()}</p>
-                  </div>
-                  <Badge variant={g.status === 'published' ? 'success' : g.status === 'archived' ? 'warning' : 'default'}>
-                    {g.status}
-                  </Badge>
-                </div>
+                <button key={g.id} onClick={() => onNavigate?.('gallery-editor', g.id)} className="studio-gallery-card group text-left rounded-xl overflow-hidden border border-[var(--border-color)] bg-[var(--bg-primary)]">
+                  <div className="aspect-[16/10] relative overflow-hidden bg-[var(--bg-tertiary)]">{g.coverImage ? <img src={g.coverImage} alt="" loading="lazy" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" /> : <div className="h-full flex items-center justify-center text-[var(--text-muted)]"><Camera size={32} /></div>}<span className="absolute bottom-3 right-3 rounded-full bg-black/65 text-white px-3 py-1 text-xs opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity">Open gallery &rarr;</span></div>
+                  <div className="p-4"><div className="flex justify-between gap-2 items-center"><h3 className="font-semibold truncate">{g.title}</h3><Badge variant={g.status === 'published' ? 'success' : 'default'}>{g.status}</Badge></div><p className="text-xs text-[var(--text-muted)] mt-2">{g.clientName || 'Personal collection'} · {new Date(g.createdAt).toLocaleDateString()}</p></div>
+                </button>
               ))}
             </div>
           )}
         </Card>
 
-        <Card className="p-5">
-          <h3 className="font-semibold text-[var(--text-primary)] mb-4">Recent Activity</h3>
+        <Card className="p-5 sm:p-6 self-start"><div className="flex items-center justify-between mb-5"><div><h2 className="text-lg font-semibold tracking-tight">Studio activity</h2><p className="text-xs text-[var(--text-muted)] mt-1">The latest from your workspace.</p></div><Clock size={18} className="text-[var(--text-muted)]" /></div>
           {activity.length === 0 ? (
             <p className="text-sm text-[var(--text-muted)]">No recent activity.</p>
           ) : (
             <div className="space-y-3">
-              {activity.slice(0, 8).map((a, i) => (
-                <div key={i} className="flex items-start gap-3 p-2">
-                  <div className="w-2 h-2 rounded-full bg-[var(--accent)] mt-2 flex-shrink-0" />
+              {activity.slice(0, 5).map((a, i) => (
+                <div key={i} className="studio-activity-item flex items-start gap-3 pb-4 relative">
+                  <div className="relative z-10 w-7 h-7 rounded-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] flex items-center justify-center shrink-0"><span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" /></div>
                   <div>
                     <p className="text-sm text-[var(--text-primary)]">{a.message}</p>
-                    <p className="text-xs text-[var(--text-muted)]">{new Date(a.createdAt).toLocaleString()}</p>
+                    <p className="text-xs text-[var(--text-muted)]">{new Date(a.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · {new Date(a.createdAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
                 </div>
               ))}
             </div>
           )}
+          <Button variant="ghost" size="sm" className="w-full mt-3" onClick={() => onNavigate?.('activity')}>View all activity <span aria-hidden="true" className="ml-2">&rarr;</span></Button>
         </Card>
       </div>
     </div>
@@ -115,6 +108,10 @@ export function GalleriesPage({ onEditGallery }: { onEditGallery: (id: string) =
   const [filter, setFilter] = useState('all');
   const [showCreate, setShowCreate] = useState(false);
   const [editingGallery, setEditingGallery] = useState<Gallery | null>(null);
+  const [shareGallery, setShareGallery] = useState<Gallery | null>(null);
+  const [publishGallery, setPublishGallery] = useState<Gallery | null>(null);
+  const actionLock = useRef(false);
+  const [actionBusy, setActionBusy] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const { addToast } = useToast();
@@ -150,16 +147,20 @@ export function GalleriesPage({ onEditGallery }: { onEditGallery: (id: string) =
   });
 
   const handleDelete = async (id: string) => {
+    if (actionLock.current) return;
+    actionLock.current = true;
     try {
       await database.deleteGallery(id);
       addToast('Gallery deleted', 'success');
       loadGalleries();
     } catch (error) {
       addToast(error instanceof Error ? error.message : 'Failed to delete gallery', 'error');
-    }
+    } finally { actionLock.current = false; }
   };
 
   const handleDuplicate = async (gallery: Gallery) => {
+    if (actionLock.current) return;
+    actionLock.current = true;
     try {
       const { id, createdAt, updatedAt, ...rest } = gallery;
       await database.createGallery({ ...rest, title: `${gallery.title} (Copy)`, status: 'draft' }, profile);
@@ -167,19 +168,31 @@ export function GalleriesPage({ onEditGallery }: { onEditGallery: (id: string) =
       loadGalleries();
     } catch (error) {
       addToast(error instanceof Error ? error.message : 'Failed to duplicate gallery', 'error');
-    }
+    } finally { actionLock.current = false; }
   };
 
   const handleTogglePublish = async (gallery: Gallery) => {
+    if (actionLock.current) return;
+    actionLock.current = true; setActionBusy(true);
     try {
-      const newStatus = gallery.status === 'published' ? 'draft' : 'published';
-      await database.updateGallery(gallery.id, { status: newStatus });
-      addToast(`Gallery ${newStatus === 'published' ? 'published' : 'unpublished'}`, 'success');
-      loadGalleries();
-    } catch (error) {
-      addToast(error instanceof Error ? error.message : 'Failed to update gallery status', 'error');
-    }
+      const status = gallery.status === 'published' ? 'draft' : 'published';
+      await database.updateGallery(gallery.id, { status });
+      addToast(status === 'published' ? 'Gallery published. Your client link is ready to share.' : 'Gallery unpublished. Client access is disabled.', 'success');
+      setPublishGallery(null);
+      if (status === 'published') setShareGallery({ ...gallery, status });
+      await loadGalleries();
+    } catch (error) { addToast(error instanceof Error ? error.message : 'Could not change publication.', 'error'); }
+    finally { actionLock.current = false; setActionBusy(false); }
   };
+  const actions = (g: Gallery) => <div className="flex flex-wrap items-center gap-2">
+    <Button size="sm" variant="secondary" onClick={() => onEditGallery(g.id)}>Edit</Button>
+    {g.status === 'published' && <Button size="sm" variant="outline" onClick={() => setShareGallery(g)}>Share</Button>}
+    <details className="relative"><summary className="cursor-pointer rounded-lg px-3 py-2 text-sm border border-[var(--border-color)]">More actions<span className="sr-only"> for {g.title}</span></summary><div className="absolute right-0 bottom-full mb-2 z-20 w-44 p-2 rounded-xl shadow-xl border border-[var(--border-color)] bg-[var(--bg-card)] flex flex-col gap-1">
+      <Button size="sm" variant="ghost" onClick={() => setPublishGallery(g)}>{g.status === 'published' ? 'Unpublish' : 'Publish'}</Button>
+      <Button size="sm" variant="ghost" onClick={() => handleDuplicate(g)}>Duplicate</Button>
+      <Button size="sm" variant="ghost" onClick={() => setDeleteConfirm(g.id)}>Delete gallery</Button>
+    </div></details>
+  </div>;
 
   return (
     <div className="animate-fade-in">
@@ -191,15 +204,15 @@ export function GalleriesPage({ onEditGallery }: { onEditGallery: (id: string) =
 
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <div className="flex-1"><SearchInput value={search} onChange={setSearch} placeholder="Search galleries..." /></div>
-        <Select value={filter} onChange={e => setFilter(e.target.value)} options={[
+        <Select aria-label="Filter galleries by status" value={filter} onChange={e => setFilter(e.target.value)} options={[
           { value: 'all', label: 'All Status' },
           { value: 'published', label: 'Published' },
           { value: 'draft', label: 'Draft' },
           { value: 'archived', label: 'Archived' },
         ]} />
         <div className="flex gap-1 bg-[var(--bg-tertiary)] rounded-lg p-1">
-          <button onClick={() => setViewMode('grid')} className={`p-2 rounded ${viewMode === 'grid' ? 'bg-[var(--bg-card)] shadow-sm' : ''}`}><LayoutGrid size={16} /></button>
-          <button onClick={() => setViewMode('list')} className={`p-2 rounded ${viewMode === 'list' ? 'bg-[var(--bg-card)] shadow-sm' : ''}`}><List size={16} /></button>
+          <button aria-label="Grid view" aria-pressed={viewMode === 'grid'} onClick={() => setViewMode('grid')} className={`p-2 rounded ${viewMode === 'grid' ? 'bg-[var(--bg-card)] shadow-sm' : ''}`}><LayoutGrid size={16} /></button>
+          <button aria-label="List view" aria-pressed={viewMode === 'list'} onClick={() => setViewMode('list')} className={`p-2 rounded ${viewMode === 'list' ? 'bg-[var(--bg-card)] shadow-sm' : ''}`}><List size={16} /></button>
         </div>
       </div>
 
@@ -209,7 +222,7 @@ export function GalleriesPage({ onEditGallery }: { onEditGallery: (id: string) =
           <Button variant="secondary" onClick={() => { void loadGalleries(); }}>Retry</Button>
         </div>
       ) : filtered.length === 0 ? (
-        <EmptyState icon={<Image size={48} />} title="No galleries yet" description="Create your first gallery to start delivering photos to clients." action={<Button onClick={() => setShowCreate(true)}>Create Gallery</Button>} />
+        <EmptyState icon={<Image size={48} />} title={search || filter !== "all" ? "No matching galleries" : "Your first collection starts here"} description={search || filter !== "all" ? "Try another title, client name, or status." : "Create a private draft, upload your photos, then publish when ready."} action={search || filter !== "all" ? <Button variant="secondary" onClick={() => { setSearch(''); setFilter('all'); }}>Clear filters</Button> : <Button onClick={() => setShowCreate(true)}>Create Gallery</Button>} />
       ) : viewMode === 'grid' ? (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(g => (
@@ -230,14 +243,7 @@ export function GalleriesPage({ onEditGallery }: { onEditGallery: (id: string) =
               <div className="p-4">
                 <h3 className="font-semibold text-[var(--text-primary)] truncate">{g.title}</h3>
                 <p className="text-xs text-[var(--text-muted)] mt-1">{g.clientName || 'No client'} • {new Date(g.createdAt).toLocaleDateString()}</p>
-                <div className="flex items-center gap-1 mt-3">
-                  <button onClick={() => onEditGallery(g.id)} className="p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)]" title="Edit"><Edit size={14} /></button>
-                  <button onClick={() => handleTogglePublish(g)} className="p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)]" title={g.status === 'published' ? 'Unpublish' : 'Publish'}>
-                    {g.status === 'published' ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                  <button onClick={() => handleDuplicate(g)} className="p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)]" title="Duplicate"><Copy size={14} /></button>
-                  <button onClick={() => setDeleteConfirm(g.id)} className="p-1.5 rounded hover:bg-[var(--bg-hover)] text-red-500 ml-auto" title="Delete"><Trash2 size={14} /></button>
-                </div>
+                <div className="mt-4">{actions(g)}</div>
               </div>
             </Card>
           ))}
@@ -246,7 +252,7 @@ export function GalleriesPage({ onEditGallery }: { onEditGallery: (id: string) =
         <Card className="overflow-hidden">
           <div className="divide-y divide-[var(--border-color)]">
             {filtered.map(g => (
-              <div key={g.id} className="flex items-center gap-4 p-4 hover:bg-[var(--bg-hover)]">
+              <div key={g.id} className="flex flex-wrap items-center gap-4 p-4 hover:bg-[var(--bg-hover)]">
                 <div className="w-12 h-12 rounded-lg bg-[var(--bg-tertiary)] flex-shrink-0 overflow-hidden">
                   {g.coverImage ? <img src={g.coverImage} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Image size={16} className="text-[var(--text-muted)]" /></div>}
                 </div>
@@ -255,18 +261,20 @@ export function GalleriesPage({ onEditGallery }: { onEditGallery: (id: string) =
                   <p className="text-xs text-[var(--text-muted)]">{g.clientName || 'No client'} • {new Date(g.createdAt).toLocaleDateString()}</p>
                 </div>
                 <Badge variant={g.status === 'published' ? 'success' : g.status === 'archived' ? 'warning' : 'default'}>{g.status}</Badge>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => onEditGallery(g.id)} className="p-1.5 rounded hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)]"><Edit size={14} /></button>
-                  <button onClick={() => setDeleteConfirm(g.id)} className="p-1.5 rounded hover:bg-[var(--bg-tertiary)] text-red-500"><Trash2 size={14} /></button>
-                </div>
+                {actions(g)}
               </div>
             ))}
           </div>
         </Card>
       )}
 
+      {shareGallery && <ShareGalleryModal isOpen onClose={() => setShareGallery(null)} gallery={shareGallery} />}
+      <Modal isOpen={!!publishGallery} onClose={() => setPublishGallery(null)} closeDisabled={actionBusy} title={publishGallery?.status === 'published' ? 'Unpublish gallery?' : 'Publish gallery?'} size="sm">
+        <p className="text-sm text-[var(--text-secondary)] mb-6">{publishGallery?.status === 'published' ? 'Unpublishing disables client access through the gallery link. All photos, albums, and gallery details are preserved.' : 'Publishing enables client access through your gallery link. Review your photos and privacy settings before continuing.'}</p>
+        <div className="flex gap-3 justify-end"><Button variant="secondary" disabled={actionBusy} onClick={() => setPublishGallery(null)}>Cancel</Button><Button loading={actionBusy} onClick={() => publishGallery && handleTogglePublish(publishGallery)}>Confirm {publishGallery?.status === 'published' ? 'unpublish' : 'publish'}</Button></div>
+      </Modal>
       {/* Create Gallery Modal */}
-      <CreateEditGalleryModal isOpen={showCreate} onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); loadGalleries(); }} />
+      <CreateEditGalleryModal isOpen={showCreate} onClose={() => setShowCreate(false)} onSaved={(id) => { setShowCreate(false); if (id) onEditGallery(id); else void loadGalleries(); }} />
       
       {/* Delete Confirm */}
       <ConfirmDialog isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)} title="Delete Gallery" message="Are you sure you want to delete this gallery? This action cannot be undone." confirmText="Delete" danger />
@@ -275,7 +283,7 @@ export function GalleriesPage({ onEditGallery }: { onEditGallery: (id: string) =
 }
 
 // Create/Edit Gallery Modal
-function CreateEditGalleryModal({ isOpen, onClose, onSaved, gallery }: { isOpen: boolean; onClose: () => void; onSaved: () => void; gallery?: Gallery }) {
+function CreateEditGalleryModal({ isOpen, onClose, onSaved, gallery }: { isOpen: boolean; onClose: () => void; onSaved: (id?: string) => void; gallery?: Gallery }) {
   const [title, setTitle] = useState(gallery?.title || '');
   const [description, setDescription] = useState(gallery?.description || '');
   const [clientName, setClientName] = useState(gallery?.clientName || '');
@@ -291,43 +299,62 @@ function CreateEditGalleryModal({ isOpen, onClose, onSaved, gallery }: { isOpen:
   const { addToast } = useToast();
   const { profile } = useAuth();
 
+  const saved = useRef(false);
+  const initial = JSON.stringify([gallery?.title || '', gallery?.description || '', gallery?.clientName || '', gallery?.clientEmail || '', gallery?.visibility || 'private', gallery?.passwordProtected || false, gallery?.password || '', gallery?.allowDownloads ?? true, gallery?.allowFavorites ?? true, gallery?.allowComments ?? true, gallery?.eventDate || '']);
   useEffect(() => {
-    if (gallery) {
-      setTitle(gallery.title);
-      setDescription(gallery.description || '');
-      setClientName(gallery.clientName || '');
-      setClientEmail(gallery.clientEmail || '');
-      setVisibility(gallery.visibility);
-      setPasswordProtected(gallery.passwordProtected);
-      setPassword(gallery.password || '');
-      setAllowDownloads(gallery.allowDownloads);
-      setAllowFavorites(gallery.allowFavorites);
-      setAllowComments(gallery.allowComments);
-      setEventDate(gallery.eventDate || '');
-    }
-  }, [gallery]);
+    if (!isOpen) return;
+    saved.current = false;
+    setTitle(gallery?.title || ''); setDescription(gallery?.description || '');
+    setClientName(gallery?.clientName || ''); setClientEmail(gallery?.clientEmail || '');
+    setVisibility(gallery?.visibility || 'private'); setPasswordProtected(gallery?.passwordProtected || false);
+    setPassword(gallery?.password || ''); setAllowDownloads(gallery?.allowDownloads ?? true);
+    setAllowFavorites(gallery?.allowFavorites ?? true); setAllowComments(gallery?.allowComments ?? true);
+    setEventDate(gallery?.eventDate || ''); setValidation('');
+  }, [gallery, isOpen]);
 
+  const saving = useRef(false);
+  const snapshot = JSON.stringify([title, description, clientName, clientEmail, visibility, passwordProtected, password, allowDownloads, allowFavorites, allowComments, eventDate]);
+  const dirty = isOpen && initial !== snapshot;
+  useEffect(() => {
+    if (!dirty) return;
+    const leave = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    const navigate = (event: Event) => { if (saved.current) return; if (saving.current || !window.confirm('Discard unsaved gallery details?')) event.preventDefault(); };
+    window.addEventListener('beforeunload', leave); window.addEventListener('studio-before-navigate', navigate);
+    return () => { window.removeEventListener('beforeunload', leave); window.removeEventListener('studio-before-navigate', navigate); };
+  }, [dirty]);
+  const close = () => { if (!saving.current && (!dirty || window.confirm('Discard unsaved gallery details?'))) onClose(); };
+  const [validation, setValidation] = useState('');
   const handleSave = async () => {
-    if (!title.trim()) { addToast('Title is required', 'error'); return; }
+    if (saving.current) return;
+    setValidation('');
+    if (clientEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail)) { setValidation('Enter a valid client email address.'); return; }
+    if (passwordProtected && !password.trim()) { setValidation('Enter a password or turn off password protection.'); return; }
+    if (!title.trim()) { setValidation('A gallery title is required.'); return; }
+    saving.current = true;
     setLoading(true);
     try {
       if (gallery) {
         await database.updateGallery(gallery.id, { title, description, clientName, clientEmail, visibility, passwordProtected, password, allowDownloads, allowFavorites, allowComments, eventDate });
+        saved.current = true;
         addToast('Gallery updated', 'success');
       } else {
-        await database.createGallery({ title, description, clientName, clientEmail, visibility, passwordProtected, password, allowDownloads, allowFavorites, allowComments, eventDate, status: 'draft', coverImage: '' }, profile);
-        addToast('Gallery created', 'success');
+        const created = await database.createGallery({ title, description, clientName, clientEmail, visibility: 'private', passwordProtected, password, allowDownloads, allowFavorites, allowComments, eventDate, status: 'draft', coverImage: '' }, profile);
+        saved.current = true;
+        addToast('Private draft created. Add your photos next.', 'success');
+        onSaved(created.id);
+        return;
       }
       onSaved();
     } catch (err: any) {
       addToast(err?.message || 'Failed to save gallery', 'error');
-    }
-    setLoading(false);
+    } finally { saving.current = false; setLoading(false); }
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={gallery ? 'Edit Gallery' : 'Create Gallery'} size="lg">
+    <Modal isOpen={isOpen} onClose={close} closeDisabled={loading} title={gallery ? 'Edit Gallery' : 'Create Gallery'} size="lg">
       <div className="space-y-4">
+        <p className="text-sm text-[var(--text-secondary)]">Save your details, upload photos, choose a cover, and preview privately. Publish and share when everything is ready.</p>
+        {validation && <p role="alert" className="text-sm text-red-500">{validation}</p>}
         <Input label="Gallery Title" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g., John & Sarah Wedding" required />
         <Textarea label="Description" value={description} onChange={e => setDescription(e.target.value)} placeholder="Describe this gallery..." rows={3} />
         <div className="grid sm:grid-cols-2 gap-4">
@@ -345,7 +372,7 @@ function CreateEditGalleryModal({ isOpen, onClose, onSaved, gallery }: { isOpen:
                 <input type="checkbox" checked={passwordProtected} onChange={e => setPasswordProtected(e.target.checked)} className="rounded" />
                 Password Protected
               </label>
-              {passwordProtected && <Input value={password} onChange={e => setPassword(e.target.value)} placeholder="Gallery password" />}
+              {passwordProtected && <Input label="Gallery password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Gallery password" />}
             </div>
           </div>
         </div>
@@ -366,8 +393,8 @@ function CreateEditGalleryModal({ isOpen, onClose, onSaved, gallery }: { isOpen:
         </div>
 
         <div className="flex gap-3 justify-end pt-4">
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSave} loading={loading}>{gallery ? 'Update' : 'Create'} Gallery</Button>
+          <Button variant="secondary" onClick={close} disabled={loading}>Cancel</Button>
+          <Button onClick={handleSave} loading={loading}>{gallery ? 'Save changes' : 'Create private draft'}</Button>
         </div>
       </div>
     </Modal>
@@ -965,15 +992,13 @@ export function AdminPage({ onNavigate }: { onNavigate?: (page: string) => void 
   const [stats, setStats] = useState<any>(null);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [usageByUser, setUsageByUser] = useState<Record<string, Awaited<ReturnType<typeof database.getUserUsage>>>>({});
+  const paymentReviewLock = useRef(false);
+  const [reviewingPayment, setReviewingPayment] = useState<string | null>(null);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [grantTarget, setGrantTarget] = useState<UserProfile | null>(null);
-  const [grantPlan, setGrantPlan] = useState<PlanId>('basic');
-  const [grantMonths, setGrantMonths] = useState('1');
-  const [grantNote, setGrantNote] = useState('');
-  const [grantBusy, setGrantBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -1023,40 +1048,20 @@ export function AdminPage({ onNavigate }: { onNavigate?: (page: string) => void 
     );
   }
 
-  const planName = (id?: string) => plans.find(p => p.id === id)?.name || 'Free';
   const isExpired = (u: UserProfile) => {
     if (!u.subscriptionPlan || u.subscriptionPlan === 'free') return false;
     return !!u.subscriptionExpiresAt && new Date(u.subscriptionExpiresAt).getTime() < Date.now();
   };
 
   const handleConfirmPayment = async (pay: PaymentRecord, status: 'confirmed' | 'rejected') => {
+    if (paymentReviewLock.current) return;
+    paymentReviewLock.current = true; setReviewingPayment(pay.id);
     try {
       await database.setPaymentStatus(pay.id, status);
-      if (status === 'confirmed') {
-        // Activating the plan immediately for the payer (1 month by default)
-        await database.grantSubscription(profile!.uid, pay.userId, pay.planId, 1, `MoMo payment ${pay.reference || pay.id}`);
-      }
-      addToast(status === 'confirmed' ? `Payment confirmed — ${pay.planName} activated` : 'Payment rejected', status === 'confirmed' ? 'success' : 'info');
-      load();
-    } catch {
-      addToast('Failed to update payment', 'error');
-    }
-  };
-
-  const handleGrant = async () => {
-    if (!grantTarget || !profile) return;
-    setGrantBusy(true);
-    try {
-      const months = grantPlan === 'free' ? 0 : Math.max(0, Number(grantMonths) || 0);
-      await database.grantSubscription(profile.uid, grantTarget.uid, grantPlan, months, grantNote.trim() || undefined);
-      addToast(`${planName(grantPlan)} plan granted to ${grantTarget.email}`, 'success');
-      setGrantTarget(null);
-      setGrantNote('');
-      load();
-    } catch {
-      addToast('Failed to grant subscription', 'error');
-    }
-    setGrantBusy(false);
+      addToast(status === 'confirmed' ? `Payment confirmed. ${pay.planName} activated for ${pay.billingCycle === 'annual' ? '12 months' : '1 month'}.` : 'Payment rejected', status === 'confirmed' ? 'success' : 'info');
+      await load();
+    } catch (error) { addToast(error instanceof Error ? error.message : 'Failed to update payment', 'error'); }
+    finally { paymentReviewLock.current = false; setReviewingPayment(null); }
   };
 
   const pendingPayments = payments.filter(p => p.status === 'pending');
@@ -1070,9 +1075,9 @@ export function AdminPage({ onNavigate }: { onNavigate?: (page: string) => void 
       />
 
       <Card className="p-4 mb-6 border-yellow-500/40 bg-yellow-500/5">
-        <div className="flex items-center gap-3 text-sm text-[var(--text-secondary)]">
+        <div className="flex items-start gap-3 text-sm text-[var(--text-secondary)]">
           <Smartphone size={16} className="text-yellow-500 flex-shrink-0" />
-          Photographers pay manually via MTN MoMo merchant code <span className="font-mono font-bold text-[var(--text-primary)]">{MTN_MOMO_MERCHANT_CODE}</span> (dial <span className="font-mono font-bold text-[var(--text-primary)]">{MTN_MOMO_USSD_DIAL}</span>). Verify the payment in your MoMo statement, then confirm it below or grant a plan manually.
+          <p className="min-w-0 break-words">Photographers pay manually via MTN MoMo merchant code <span className="font-mono font-bold text-[var(--text-primary)]">{MTN_MOMO_MERCHANT_CODE}</span> (dial <span className="font-mono font-bold text-[var(--text-primary)]">{MTN_MOMO_USSD_DIAL}</span>). Verify the payment in your MoMo statement, then confirm it below or grant a plan manually.</p>
         </div>
       </Card>
 
@@ -1096,6 +1101,7 @@ export function AdminPage({ onNavigate }: { onNavigate?: (page: string) => void 
                   <th className="py-2 pr-4 font-medium">Date</th>
                   <th className="py-2 pr-4 font-medium">User</th>
                   <th className="py-2 pr-4 font-medium">Plan</th>
+                  <th className="py-2 pr-4 font-medium">Period</th>
                   <th className="py-2 pr-4 font-medium">Amount</th>
                   <th className="py-2 pr-4 font-medium">Paid From</th>
                   <th className="py-2 pr-4 font-medium">Reference</th>
@@ -1109,15 +1115,16 @@ export function AdminPage({ onNavigate }: { onNavigate?: (page: string) => void 
                     <td className="py-2.5 pr-4 text-[var(--text-secondary)] whitespace-nowrap">{new Date(p.createdAt).toLocaleString()}</td>
                     <td className="py-2.5 pr-4 text-[var(--text-primary)]">{p.userEmail}</td>
                     <td className="py-2.5 pr-4 text-[var(--text-secondary)]">{p.planName}</td>
-                    <td className="py-2.5 pr-4 text-[var(--text-secondary)] whitespace-nowrap">{formatRwf(p.amountRwf)}</td>
+                    <td className="py-2.5 pr-4 text-[var(--text-secondary)] whitespace-nowrap">{p.billingCycle === 'annual' ? 'Annual · 12 months' : 'Monthly · 1 month'}</td>
+                    <td className="py-2.5 pr-4 text-[var(--text-secondary)] whitespace-nowrap">{formatRwf(p.amountRwf)}{p.discountPercent ? <span className="block text-xs">{p.discountPercent}% discount at submission</span> : null}</td>
                     <td className="py-2.5 pr-4 text-[var(--text-muted)] font-mono text-xs">{p.payerNumber || '—'}</td>
                     <td className="py-2.5 pr-4 text-[var(--text-muted)] font-mono text-xs">{p.reference || '—'}</td>
                     <td className="py-2.5 pr-4"><Badge variant={p.status === 'confirmed' ? 'success' : p.status === 'rejected' ? 'danger' : 'warning'}>{p.status}</Badge></td>
                     <td className="py-2.5">
                       {p.status === 'pending' && (
                         <div className="flex gap-2">
-                          <Button size="sm" onClick={() => handleConfirmPayment(p, 'confirmed')}>Confirm</Button>
-                          <Button size="sm" variant="ghost" onClick={() => handleConfirmPayment(p, 'rejected')}>Reject</Button>
+                          <Button size="sm" disabled={!!reviewingPayment} loading={reviewingPayment === p.id} onClick={() => handleConfirmPayment(p, 'confirmed')}>Confirm</Button>
+                          <Button size="sm" variant="ghost" disabled={!!reviewingPayment} onClick={() => handleConfirmPayment(p, 'rejected')}>Reject</Button>
                         </div>
                       )}
                     </td>
@@ -1195,7 +1202,7 @@ export function AdminPage({ onNavigate }: { onNavigate?: (page: string) => void 
                         {u.subscriptionPlan && u.subscriptionPlan !== 'free' && u.subscriptionExpiresAt ? new Date(u.subscriptionExpiresAt).toLocaleDateString() : '—'}
                       </td>
                       <td className="py-2.5">
-                        <Button size="sm" variant="secondary" onClick={() => { setGrantTarget(u); setGrantPlan((u.subscriptionPlan as PlanId) || 'free'); }}>
+                        <Button size="sm" variant="secondary" aria-label={`Manage subscription for ${u.name || u.email}`} onClick={() => setGrantTarget(u)}>
                           Manage Plan
                         </Button>
                       </td>
@@ -1211,48 +1218,30 @@ export function AdminPage({ onNavigate }: { onNavigate?: (page: string) => void 
       <Card className="p-6">
         <h3 className="font-semibold text-[var(--text-primary)] mb-4">System Information</h3>
         <div className="space-y-3 text-sm">
-          <div className="flex justify-between py-2 border-b border-[var(--border-color)]">
+          <div className="flex flex-wrap gap-2 justify-between py-2 border-b border-[var(--border-color)]">
             <span className="text-[var(--text-muted)]">Platform</span>
             <span className="text-[var(--text-primary)]">Kigalipix v1.0.0</span>
           </div>
-          <div className="flex justify-between py-2 border-b border-[var(--border-color)]">
+          <div className="flex flex-wrap gap-2 justify-between py-2 border-b border-[var(--border-color)]">
             <span className="text-[var(--text-muted)]">Admin Email</span>
             <span className="text-[var(--text-primary)]">{profile?.email || 'N/A'}</span>
           </div>
-          <div className="flex justify-between py-2 border-b border-[var(--border-color)]">
+          <div className="flex flex-wrap gap-2 justify-between py-2 border-b border-[var(--border-color)]">
             <span className="text-[var(--text-muted)]">Database</span>
             <span className="text-[var(--text-primary)]">Firebase Realtime Database</span>
           </div>
-          <div className="flex justify-between py-2 border-b border-[var(--border-color)]">
+          <div className="flex flex-wrap gap-2 justify-between py-2 border-b border-[var(--border-color)]">
             <span className="text-[var(--text-muted)]">Media Storage</span>
             <span className="text-[var(--text-primary)]">Cloudinary</span>
           </div>
-          <div className="flex justify-between py-2">
+          <div className="flex flex-wrap gap-2 justify-between py-2">
             <span className="text-[var(--text-muted)]">Payments</span>
             <span className="text-[var(--text-primary)]">MTN MoMo (merchant {MTN_MOMO_MERCHANT_CODE})</span>
           </div>
         </div>
       </Card>
 
-      {/* Grant / change subscription modal */}
-      <Modal isOpen={!!grantTarget} onClose={() => setGrantTarget(null)} title={`Manage subscription — ${grantTarget?.email || ''}`}>
-        <div className="p-6 space-y-5">
-          <Select
-            label="Plan"
-            value={grantPlan}
-            onChange={e => setGrantPlan(e.target.value as PlanId)}
-            options={plans.map(p => ({ value: p.id, label: `${p.name} — ${p.storageGb} GB, ${p.maxClients < 0 ? 'unlimited' : p.maxClients} clients (${p.priceRwf === 0 ? 'Free' : formatRwf(p.priceRwf)}/mo)` }))}
-          />
-          {grantPlan !== 'free' && (
-            <Input label="Duration (months, 0 = no expiry)" type="number" min={0} step={1} value={grantMonths} onChange={e => setGrantMonths(e.target.value)} />
-          )}
-          <Input label="Note (optional)" value={grantNote} onChange={e => setGrantNote(e.target.value)} placeholder="e.g. MoMo ref RCID..." />
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="ghost" onClick={() => setGrantTarget(null)}>Cancel</Button>
-            <Button onClick={handleGrant} loading={grantBusy}>Apply Subscription</Button>
-          </div>
-        </div>
-      </Modal>
+      {grantTarget && <ManageSubscriptionDialog key={grantTarget.uid} target={grantTarget} plans={plans} onClose={() => setGrantTarget(null)} onSaved={() => { setGrantTarget(null); void load(); }} />}
     </div>
   );
 }
@@ -1291,6 +1280,13 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
   const [albums, setAlbums] = useState<Album[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showPreview, setShowPreview] = useState(false);
+  const [publishConfirm, setPublishConfirm] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const publishingLock = useRef(false);
+  const [photoDelete, setPhotoDelete] = useState<string | null>(null);
+  const deleteLock = useRef(false);
+  const [deleting, setDeleting] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [showEditDetails, setShowEditDetails] = useState(false);
@@ -1331,7 +1327,7 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
 
     if (!cloudName || !uploadPreset) {
       addToast('Cloudinary is not configured. Set VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET.', 'error');
-      return;
+      throw new Error('Cloudinary is not configured. Contact your studio administrator.');
     }
 
     let uploaded = 0;
@@ -1359,6 +1355,8 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
         const data = await new Promise<any>((resolve, reject) => {
           const request = new XMLHttpRequest();
           request.open('POST', `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`);
+          request.timeout = 120000;
+          request.ontimeout = () => reject(new Error(`Upload timed out for ${file.name}.`));
           request.upload.onprogress = event => {
             const filePercentage = event.lengthComputable ? Math.round((event.loaded / event.total) * 100) : 0;
             const percentage = totalBytes > 0
@@ -1408,13 +1406,30 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
     if (uploaded > 0) addToast(`${uploaded} photo(s) uploaded`, 'success');
     const p = await database.getPhotosByGallery(galleryId);
     setPhotos(p as Photo[]);
+    if (uploaded !== files.length) throw new Error(`${uploaded} of ${files.length} photos uploaded. Some photos failed or exceeded your storage limit. Successfully uploaded photos are saved. Choose only the remaining photos to retry.`);
   };
 
   const handleDeletePhoto = async (photoId: string) => {
-    await database.deletePhoto(photoId);
-    addToast('Photo deleted', 'success');
-    const p = await database.getPhotosByGallery(galleryId);
-    setPhotos(p as Photo[]);
+    if (deleteLock.current) return;
+    deleteLock.current = true; setDeleting(true);
+    try {
+      await database.deletePhoto(photoId);
+      setPhotos(current => current.filter(photo => photo.id !== photoId));
+      addToast('Photo deleted', 'success'); setPhotoDelete(null);
+    } catch { addToast('Could not delete this photo. Please try again.', 'error'); }
+    finally { deleteLock.current = false; setDeleting(false); }
+  };
+  const togglePublication = async () => {
+    if (!gallery || publishingLock.current) return;
+    publishingLock.current = true; setPublishing(true);
+    try {
+      const status = gallery.status === 'published' ? 'draft' : 'published';
+      await database.updateGallery(galleryId, { status });
+      setGallery({ ...gallery, status }); setPublishConfirm(false);
+      addToast(status === 'published' ? 'Gallery published. Share your link with your client.' : 'Gallery unpublished. Client access is disabled.', 'success');
+      if (status === 'published') setShowShare(true);
+    } catch { addToast('Could not update publication. Please try again.', 'error'); }
+    finally { publishingLock.current = false; setPublishing(false); }
   };
 
   const handleSetCover = async (photo: Photo) => {
@@ -1440,6 +1455,7 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
         <Badge variant={gallery.status === 'published' ? 'success' : 'default'}>{gallery.status}</Badge>
       </div>
 
+<p className="mb-5 text-sm text-[var(--text-secondary)]">1. Upload photos · 2. Choose a cover · 3. Preview privately · 4. Publish and share. Save title and privacy changes with Edit Details.</p>
       {/* Gallery Info */}
       <Card className="p-5 mb-6">
         <div className="flex flex-wrap items-center gap-4 text-sm text-[var(--text-secondary)]">
@@ -1451,12 +1467,11 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
         </div>
         <div className="flex flex-wrap gap-2 mt-4">
           <Button variant="secondary" size="sm" onClick={() => setShowEditDetails(true)}><Edit size={14} className="mr-1" />Edit Details</Button>
-          <Button variant="outline" size="sm" onClick={() => setShowShare(true)}><Share2 size={14} className="mr-1" />Share Gallery</Button>
+          {gallery.status === 'published' && <Button variant="outline" size="sm" onClick={() => setShowShare(true)}><Share2 size={14} className="mr-1" />Share Gallery</Button>}
           <Button variant="secondary" size="sm" onClick={() => setShowUpload(true)}><Plus size={14} className="mr-1" />Upload Photos</Button>
           {gallery.ownerUid === profileRef?.uid && <Button variant="secondary" size="sm" onClick={() => { setCommentsPhoto(null); setShowComments(true); }}><MessageCircle size={14} className="mr-1" />Client comments</Button>}
-          <a href={`/gallery/${galleryId}`} target="_blank" rel="noopener noreferrer">
-            <Button variant="ghost" size="sm"><ExternalLink size={14} className="mr-1" />Preview</Button>
-          </a>
+          <Button variant="secondary" size="sm" onClick={() => setShowPreview(true)}>Private preview</Button>
+          <details><summary className="cursor-pointer px-3 py-2 rounded-lg border border-[var(--border-color)] text-sm">More actions</summary><Button variant="ghost" size="sm" onClick={() => setPublishConfirm(true)}>{gallery.status === 'published' ? 'Unpublish gallery' : 'Publish gallery'}</Button></details>
         </div>
       </Card>
 
@@ -1487,7 +1502,7 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
               {gallery.ownerUid === profileRef?.uid && (
                 <button type="button" onClick={() => { setCommentsPhoto(photo); setShowComments(true); }} aria-label="View private comments for this photo" title="View photo comments" className="absolute top-2 left-2 z-10 rounded-full bg-black/60 p-3 text-white hover:bg-black/80"><MessageCircle size={18} /></button>
               )}
-              <div className="absolute inset-0 bg-black/35 sm:bg-black/0 sm:group-hover:bg-black/40 transition-all flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+              <div className="absolute inset-0 bg-black/35 sm:bg-black/0 sm:group-hover:bg-black/40 transition-all flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => handleSetCover(photo)}
@@ -1497,7 +1512,7 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
                   >
                     {gallery.coverImageId === photo.id || (!gallery.coverImageId && gallery.coverImage === photo.secureUrl) ? <><Check size={14} />Cover</> : 'Set cover'}
                   </button>
-                <button onClick={() => handleDeletePhoto(photo.id)} className="p-2 rounded-full bg-red-500 text-white"><Trash2 size={14} /></button>
+                <button aria-label="Delete photo" onClick={() => setPhotoDelete(photo.id)} className="p-2 rounded-full bg-red-500 text-white"><Trash2 size={14} /></button>
                 </div>
               </div>
             </div>
@@ -1505,6 +1520,17 @@ export function GalleryEditorPage({ galleryId, onBack }: { galleryId: string; on
         </div>
       )}
 
+      <Modal isOpen={showPreview} onClose={() => setShowPreview(false)} title="Private gallery preview" size="xl">
+        <p className="text-sm text-[var(--text-muted)] mb-4">Only you can see this preview. Previewing does not publish or change client access.</p>
+        {gallery.coverImage && <img src={gallery.coverImage} alt="Gallery cover" className="w-full max-h-80 object-cover rounded-xl mb-5" />}
+        <h2 className="text-3xl font-semibold mb-3">{gallery.title}</h2><p className="whitespace-pre-wrap mb-6 text-[var(--text-secondary)]">{gallery.description}</p>
+        {photos.length ? <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">{photos.map((photo, index) => <img key={photo.id} src={photo.secureUrl} alt={`Gallery photo ${index + 1}`} loading="lazy" className="w-full rounded-lg" />)}</div> : <p>No photos yet. Upload your first photos to complete this gallery.</p>}
+      </Modal>
+      <Modal isOpen={publishConfirm} onClose={() => setPublishConfirm(false)} closeDisabled={publishing} title={gallery.status === 'published' ? 'Unpublish gallery?' : 'Publish gallery?'} size="sm">
+        <p className="mb-6 text-sm">{gallery.status === 'published' ? 'Unpublishing disables client access while preserving all photos, albums, and details.' : 'Clients will be able to access this gallery through its link. Check your cover, photos, and privacy settings before publishing.'}</p>
+        <div className="flex justify-end gap-3"><Button variant="secondary" disabled={publishing} onClick={() => setPublishConfirm(false)}>Cancel</Button><Button loading={publishing} onClick={togglePublication}>Confirm {gallery.status === 'published' ? 'unpublish' : 'publish'}</Button></div>
+      </Modal>
+      <Modal isOpen={!!photoDelete} onClose={() => setPhotoDelete(null)} closeDisabled={deleting} title="Delete photo?" size="sm"><p className="mb-6 text-sm">This removes the photo from this gallery. This action cannot be undone.</p><div className="flex justify-end gap-3"><Button variant="secondary" disabled={deleting} onClick={() => setPhotoDelete(null)}>Cancel</Button><Button variant="danger" loading={deleting} onClick={() => photoDelete && handleDeletePhoto(photoDelete)}>Delete photo</Button></div></Modal>
       {/* Upload Modal */}
       {showComments && gallery.ownerUid === profileRef?.uid && <GalleryCommentsDialog galleryId={galleryId} photos={photos} photo={commentsPhoto} onClose={() => setShowComments(false)} />}
       <UploadModal isOpen={showUpload} onClose={() => setShowUpload(false)} onUpload={handleUploadPhotos} albums={albums} selectedAlbum={selectedAlbum} onSelectAlbum={setSelectedAlbum} />
@@ -1533,19 +1559,18 @@ function ShareGalleryModal({ isOpen, onClose, gallery }: { isOpen: boolean; onCl
   const galleryUrl = `${window.location.origin}/gallery/${gallery.id}`;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(galleryUrl)}&bgcolor=transparent`;
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(galleryUrl).then(() => {
-      addToast('Link copied to clipboard!', 'success');
-    });
+  const handleCopy = async () => {
+    try { await navigator.clipboard.writeText(galleryUrl); addToast('Link copied to clipboard!', 'success'); }
+    catch { addToast('Could not copy the link. Select and copy the address below manually.', 'error'); }
   };
 
   const handleShare = async () => {
     if (navigator.share) {
       try {
         await navigator.share({ title: gallery.title, text: gallery.description || `View ${gallery.title}`, url: galleryUrl });
-      } catch {}
+      } catch (error) { if (!(error instanceof DOMException && error.name === 'AbortError')) addToast('Sharing failed. Use Copy link or copy the address manually.', 'error'); }
     } else {
-      handleCopy();
+      void handleCopy();
     }
   };
 
@@ -1571,10 +1596,8 @@ function ShareGalleryModal({ isOpen, onClose, gallery }: { isOpen: boolean; onCl
 
         {/* URL */}
         <div className="flex items-center gap-2">
-          <div className="flex-1 px-3 py-2 rounded-lg bg-[var(--bg-tertiary)] text-xs text-[var(--text-secondary)] truncate font-mono">
-            {galleryUrl}
-          </div>
-          <Button variant="secondary" size="sm" onClick={handleCopy}><Copy size={14} /></Button>
+          <Input aria-label="Gallery link" readOnly value={galleryUrl} onFocus={event => event.target.select()} />
+          <Button variant="secondary" size="sm" onClick={handleCopy}><Copy size={14} /><span className="ml-1">Copy link</span></Button>
         </div>
 
         {/* Actions */}
@@ -1599,35 +1622,51 @@ function ShareGalleryModal({ isOpen, onClose, gallery }: { isOpen: boolean; onCl
 function UploadModal({ isOpen, onClose, onUpload, albums, selectedAlbum, onSelectAlbum }: {
   isOpen: boolean; onClose: () => void; onUpload: (files: FileList, onProgress: (progress: { percentage: number; current: number; total: number; fileName: string; filePercentage: number }) => void) => Promise<void>; albums: Album[]; selectedAlbum: string; onSelectAlbum: (id: string) => void;
 }) {
+  const lock = useRef(false);
+  const [error, setError] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const [files, setFiles] = useState<FileList | null>(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<{ percentage: number; current: number; total: number; fileName: string; filePercentage: number } | null>(null);
 
+  useEffect(() => {
+    if (!uploading) return;
+    const leave = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    const navigate = (event: Event) => { event.preventDefault(); };
+    window.addEventListener('beforeunload', leave); window.addEventListener('studio-before-navigate', navigate);
+    return () => { window.removeEventListener('beforeunload', leave); window.removeEventListener('studio-before-navigate', navigate); };
+  }, [uploading]);
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    if (lock.current) return;
     setDragOver(false);
     if (e.dataTransfer.files.length > 0) setFiles(e.dataTransfer.files);
   };
 
   const handleUpload = async () => {
-    if (!files || files.length === 0) return;
+    if (lock.current || !files || files.length === 0) return;
+    lock.current = true; setError('');
     setUploading(true);
     setProgress({ percentage: 0, current: 1, total: files.length, fileName: files[0].name, filePercentage: 0 });
     try {
       await onUpload(files, setProgress);
       setFiles(null);
       onClose();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Upload failed. Choose the remaining photos and try again.');
+      setFiles(null);
     } finally {
+      lock.current = false;
       setUploading(false);
     }
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Upload Photos" size="lg">
+    <Modal isOpen={isOpen} onClose={() => !lock.current && onClose()} closeDisabled={uploading} title="Upload Photos" size="lg">
       <div className="space-y-4">
+        {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
         {albums.length > 0 && (
-          <Select label="Upload to Album" value={selectedAlbum} onChange={e => onSelectAlbum(e.target.value)} options={albums.map(a => ({ value: a.id, label: a.title }))} />
+          <Select disabled={uploading} label="Upload to Album" value={selectedAlbum} onChange={e => onSelectAlbum(e.target.value)} options={albums.map(a => ({ value: a.id, label: a.title }))} />
         )}
         
         <div
@@ -1641,7 +1680,7 @@ function UploadModal({ isOpen, onClose, onUpload, albums, selectedAlbum, onSelec
           <p className="text-xs text-[var(--text-muted)] mb-3">or</p>
           <label className="inline-block cursor-pointer">
             <span className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-sm font-medium hover:bg-[var(--accent-hover)] transition-colors">Choose Photos</span>
-            <input type="file" multiple accept="image/*" className="hidden" onChange={e => e.target.files && setFiles(e.target.files)} />
+            <input aria-label="Choose photos to upload" disabled={uploading} type="file" multiple accept="image/*" className="block mt-3 text-sm max-w-full" onChange={e => e.target.files && setFiles(e.target.files)} />
           </label>
         </div>
 

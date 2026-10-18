@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { GuestRoute } from './components/GuestRoute';
 import { AppProvider, useAuth } from './context/AppContext';
 import { ToastContainer, Spinner, DashboardSidebar, DashboardHeader } from './components/UI';
 import { HomePage, FeaturesPage, PricingPage, AboutPage, ContactPage, LoginPage, RegisterPage, ForgotPasswordPage, PrivacyPage, TermsPage } from './pages/PublicPages';
@@ -30,6 +31,23 @@ function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const historyIndex = useRef(window.history.state?.idx || 0);
+  const restoringHistory = useRef(false);
+  useEffect(() => { historyIndex.current = window.history.state?.idx || 0; }, [location.key]);
+  useEffect(() => {
+    const pop = (event: PopStateEvent) => {
+      if (restoringHistory.current) { restoringHistory.current = false; return; }
+      const next = event.state?.idx || 0;
+      if (!window.dispatchEvent(new Event('studio-before-navigate', { cancelable: true }))) {
+        event.stopImmediatePropagation();
+        restoringHistory.current = true;
+        window.history.go(historyIndex.current - next);
+      }
+    };
+    window.addEventListener('popstate', pop, true);
+    return () => window.removeEventListener('popstate', pop, true);
+  }, []);
+
   // Keep page in sync when navigating with browser back/forward
   useEffect(() => {
     const state = location.state as { luminaPage?: string; galleryId?: string } | null;
@@ -40,6 +58,7 @@ function DashboardLayout() {
   }, [location.key, location.state]);
 
   const goToPage = (page: string, galleryId?: string) => {
+    if (!window.dispatchEvent(new Event('studio-before-navigate', { cancelable: true }))) return;
     setCurrentPage(page);
     setEditingGalleryId(page === 'gallery-editor' ? galleryId || null : null);
     navigate('/dashboard', { state: { luminaPage: page, galleryId: page === 'gallery-editor' ? galleryId : undefined } });
@@ -87,7 +106,7 @@ function DashboardLayout() {
   return (
     <div className="flex min-h-screen bg-[var(--bg-secondary)]">
       <DashboardSidebar 
-        currentPage={visiblePage} 
+        currentPage={visiblePage}
         onNavigate={goToPage}
         mobileOpen={mobileMenuOpen}
         onCloseMobile={() => setMobileMenuOpen(false)}
@@ -107,7 +126,7 @@ function AppRoutes() {
   return (
     <Routes>
       {/* Public Routes */}
-      <Route path="/" element={<HomePage />} />
+      <Route path="/" element={<GuestRoute><HomePage /></GuestRoute>} />
       <Route path="/features" element={<FeaturesPage />} />
       <Route path="/pricing" element={<PricingPage />} />
       <Route path="/about" element={<AboutPage />} />
@@ -116,8 +135,8 @@ function AppRoutes() {
       <Route path="/terms" element={<TermsPage />} />
       
       {/* Auth Routes */}
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />
+      <Route path="/register" element={<GuestRoute><RegisterPage /></GuestRoute>} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       
       {/* Dashboard Routes */}

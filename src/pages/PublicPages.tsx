@@ -1,8 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth, useTheme } from '../context/AppContext';
-import { Button, Input, ThemeToggle } from '../components/UI';
-import { Camera, Image, Users, Shield, Heart, Download, Share2, Lock, Zap, Globe, Star, ChevronRight, Menu, X } from 'lucide-react';
+import { AuthLayout, GoogleIcon } from '../components/AuthLayout';
+import { PlanCard, BillingCycleToggle } from '../components/Pricing';
+import { usePlans } from '../hooks/usePlans';
+import type { BillingCycle } from '../services/pricing';
+import { Button, Input, Spinner, ThemeToggle } from '../components/UI';
+import { Camera, Image, Users, Shield, Heart, Download, Share2, Lock, Zap, Globe, Star, ChevronRight, Menu, X, Eye, EyeOff, ArrowRight, MessageCircle, Phone, Instagram } from 'lucide-react';
+
+const CONTACT_DETAILS = {
+  whatsapp: { label: '0780966163', href: 'https://wa.me/250780966163' },
+  phones: [
+    { label: '0792575986', href: 'tel:+250792575986' },
+    { label: '0796395652', href: 'tel:+250796395652' },
+  ],
+  instagram: { label: '@dreammakerdevelopers', href: 'https://www.instagram.com/dreammakerdevelopers/' },
+};
 
 // Navbar for public pages
 function PublicNav() {
@@ -50,7 +63,7 @@ function Footer() {
   return (
     <footer className="bg-[var(--bg-secondary)] border-t border-[var(--border-color)] py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-8">
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-2 mb-4">
               <img src="/lumina-logo.jpg" alt="" className="w-8 h-8 rounded-lg object-contain" />
@@ -77,6 +90,14 @@ function Footer() {
             <div className="space-y-2">
               <Link to="/privacy" className="block text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)]">Privacy Policy</Link>
               <Link to="/terms" className="block text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)]">Terms of Service</Link>
+            </div>
+          </div>
+          <div className="col-span-2 md:col-span-1">
+            <h4 className="font-semibold text-sm mb-3">Get in touch</h4>
+            <div className="space-y-3 text-sm text-[var(--text-secondary)]">
+              <a href={CONTACT_DETAILS.whatsapp.href} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:text-[var(--accent)]"><MessageCircle size={16} aria-hidden="true" /><span>WhatsApp: {CONTACT_DETAILS.whatsapp.label}</span></a>
+              {CONTACT_DETAILS.phones.map(phone => <a key={phone.href} href={phone.href} className="flex items-center gap-2 hover:text-[var(--accent)]"><Phone size={16} aria-hidden="true" /><span>{phone.label}</span></a>)}
+              <a href={CONTACT_DETAILS.instagram.href} target="_blank" rel="noopener noreferrer" className="flex items-start gap-2 hover:text-[var(--accent)]"><Instagram size={16} className="shrink-0 mt-0.5" aria-hidden="true" /><span className="break-all">{CONTACT_DETAILS.instagram.label}</span></a>
             </div>
           </div>
         </div>
@@ -243,50 +264,14 @@ export function FeaturesPage() {
 
 // PRICING PAGE
 export function PricingPage() {
-  return (
-    <div className="min-h-screen">
-      <PublicNav />
-      <section className="pt-32 pb-20 px-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h1 className="text-4xl sm:text-5xl font-bold text-[var(--text-primary)] mb-4">Simple Pricing</h1>
-            <p className="text-lg text-[var(--text-secondary)]">Choose the plan that fits your photography business.</p>
-          </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
-            {[
-              { name: 'Free', price: '0 Rwf', period: '/mo', features: ['Unlimited Gallery', '1 GB Storage', 'Basic Sharing'], highlighted: false },
-              { name: 'Starter', price: '5,000 Rwf', period: '/mo', features: ['Unlimited Galleries', '5 GB Storage', 'Basic Sharing', 'Email Support'], highlighted: true },
-              { name: 'Professional', price: '10,000 Rwf', period: '/mo', features: ['Unlimited Galleries', '10 GB Storage', 'Password Protection', 'Client Favorites', 'Priority Support', 'Custom Branding'], highlighted: false },
-              { name: 'Studio', price: '50,000 Rwf', period: '/mo', features: ['Everything in Pro','100 GB Storage', 'Dedicated Support', 'Custom Integrations'], highlighted: false },
-            ].map((plan, i) => (
-              <div key={i} className={`rounded-2xl p-8 ${plan.highlighted ? 'bg-gradient-to-br from-[var(--accent)] to-purple-600 text-white shadow-xl scale-105' : 'bg-[var(--bg-card)] border border-[var(--border-color)]'}`}>
-                {plan.highlighted && <span className="inline-block px-3 py-1 bg-white/20 rounded-full text-xs font-medium mb-4">Most Popular</span>}
-                <h3 className={`text-xl font-bold ${plan.highlighted ? 'text-white' : 'text-[var(--text-primary)]'}`}>{plan.name}</h3>
-                <div className="mt-4 mb-6">
-                  <span className="text-4xl font-bold">{plan.price}</span>
-                  <span className={plan.highlighted ? 'text-white/70' : 'text-[var(--text-muted)]'}>{plan.period}</span>
-                </div>
-                <ul className="space-y-3 mb-8">
-                  {plan.features.map((f, j) => (
-                    <li key={j} className={`flex items-center gap-2 text-sm ${plan.highlighted ? 'text-white/90' : 'text-[var(--text-secondary)]'}`}>
-                      <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-                <Link to="/register">
-                  <Button variant={plan.highlighted ? 'secondary' : 'primary'} className="w-full" size="lg">
-                    {plan.highlighted ? 'Get Started' : 'Choose Plan'}
-                  </Button>
-                </Link>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-      <Footer />
-    </div>
-  );
+  const { plans, loading, error, retry } = usePlans();
+  const [cycle, setCycle] = useState<BillingCycle>('monthly');
+  const { user } = useAuth();
+  return <div className="min-h-screen"><PublicNav /><section className="pt-28 sm:pt-32 pb-20 px-4"><div className="max-w-7xl mx-auto">
+    <div className="text-center max-w-2xl mx-auto mb-10"><p className="text-xs uppercase tracking-[0.2em] text-[var(--accent)] font-semibold mb-4">Room for every story</p><h1 className="text-4xl sm:text-5xl font-semibold tracking-tight mb-4">A plan for your studio.</h1><p className="text-[var(--text-secondary)] mb-7">Start free, then choose the space and tools your photography needs. Pay monthly or for a full year with MTN MoMo.</p><BillingCycleToggle value={cycle} onChange={setCycle} /><p className="text-xs text-[var(--text-secondary)] mt-4">Prices in RWF. Annual plans are paid in full for 12 months.</p></div>
+    {loading ? <Spinner /> : error ? <div role="alert" className="text-center space-y-3"><p>Pricing is temporarily unavailable. Please try again.</p><Button variant="secondary" onClick={retry}>Retry pricing</Button></div> : <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-5">{plans.map(plan => <PlanCard key={plan.id} plan={plan} cycle={cycle} action={<Link className="block" to={user ? '/dashboard' : '/register'} state={user ? { luminaPage: 'subscription', billingCycle: cycle } : undefined}><Button className="w-full">{plan.id === 'free' ? 'Start free' : 'Choose ' + plan.name}</Button></Link>} />)}</div>}
+    <p className="text-center text-xs text-[var(--text-secondary)] mt-8">Paid plans are activated after payment verification. No automatic charges.</p>
+  </div></section><Footer /></div>;
 }
 
 // ABOUT PAGE
@@ -334,106 +319,88 @@ export function AboutPage() {
 
 // CONTACT PAGE
 export function ContactPage() {
-  const [sent, setSent] = useState(false);
-  
-  return (
-    <div className="min-h-screen">
-      <PublicNav />
-      <section className="pt-32 pb-20 px-4">
-        <div className="max-w-2xl mx-auto">
-          <div className="text-center mb-12">
-            <h1 className="text-4xl font-bold text-[var(--text-primary)] mb-4">Get in Touch</h1>
-            <p className="text-[var(--text-secondary)]">Have questions? We'd love to hear from you.</p>
-          </div>
-          {sent ? (
-            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-8 text-center">
-              <div className="text-4xl mb-3">✓</div>
-              <h3 className="text-lg font-semibold text-green-800 dark:text-green-300 mb-2">Message Sent!</h3>
-              <p className="text-green-600 dark:text-green-400 text-sm">We'll get back to you within 24 hours.</p>
-            </div>
-          ) : (
-            <div className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-2xl p-8">
-              <form onSubmit={e => { e.preventDefault(); setSent(true); }} className="space-y-5">
-                <Input label="Name" placeholder="Your name" required />
-                <Input label="Email" type="email" placeholder="your@email.com" required />
-                <Input label="Subject" placeholder="How can we help?" />
-                <div className="space-y-1.5">
-                  <label className="block text-sm font-medium text-[var(--text-secondary)]">Message</label>
-                  <textarea rows={5} placeholder="Tell us more..." className="w-full px-4 py-2.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] outline-none resize-none" required />
-                </div>
-                <Button type="submit" className="w-full" size="lg">Send Message</Button>
-              </form>
-            </div>
-          )}
-        </div>
-      </section>
-      <Footer />
-    </div>
-  );
-}
-
-function AuthBackground() {
-  return (
-    <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden="true">
-      <img src="/home-hero.jpg" alt="" fetchPriority="high" decoding="async" width={1672} height={941} className="h-full w-full scale-110 object-cover object-[65%_center] blur-md sm:object-center" />
-      <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/45 to-black/75" />
-    </div>
-  );
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [subject, setSubject] = useState('');
+  const [message, setMessage] = useState('');
+  const [draft, setDraft] = useState<string | null>(null);
+  const update = (setter: (value: string) => void, value: string) => { setter(value); setDraft(null); };
+  const prepareMessage = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!name.trim() || !email.trim() || !message.trim()) return;
+    const text = [`Hello KigaliPix,`, `Name: ${name.trim()}`, `Email: ${email.trim()}`, subject.trim() ? `Subject: ${subject.trim()}` : '', '', message.trim()].filter((line, index) => line || index === 4).join('\n');
+    setDraft(`${CONTACT_DETAILS.whatsapp.href}?text=${encodeURIComponent(text)}`);
+  };
+  return <div className="min-h-screen"><PublicNav />
+    <section className="pt-28 sm:pt-32 pb-20 px-4"><div className="max-w-5xl mx-auto">
+      <div className="text-center max-w-xl mx-auto mb-10"><p className="text-xs uppercase tracking-[0.18em] font-semibold text-[var(--accent)] mb-3">We're here to help</p><h1 className="text-4xl sm:text-5xl font-semibold tracking-tight mb-4">Let's talk.</h1><p className="text-[var(--text-secondary)]">Questions about your studio, galleries, or subscription? Reach us on WhatsApp, give us a call, or find us on Instagram.</p></div>
+      <div className="grid sm:grid-cols-3 gap-4 mb-10">
+        <a href={CONTACT_DETAILS.whatsapp.href} target="_blank" rel="noopener noreferrer" className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] p-6 hover:border-[var(--accent)] transition-colors"><MessageCircle size={24} className="text-[var(--accent)] mb-4" aria-hidden="true" /><h2 className="font-semibold mb-2">WhatsApp</h2><p className="text-sm text-[var(--text-secondary)]">{CONTACT_DETAILS.whatsapp.label}</p><p className="text-xs text-[var(--text-secondary)] mt-3">Start a conversation <span aria-hidden="true">&rarr;</span></p></a>
+        <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] p-6"><Phone size={24} className="text-[var(--accent)] mb-4" aria-hidden="true" /><h2 className="font-semibold mb-2">Call us</h2><div className="space-y-2">{CONTACT_DETAILS.phones.map(phone => <a key={phone.href} href={phone.href} className="block text-sm text-[var(--text-secondary)] hover:text-[var(--accent)] underline underline-offset-4">{phone.label}</a>)}</div></div>
+        <a href={CONTACT_DETAILS.instagram.href} target="_blank" rel="noopener noreferrer" className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] p-6 hover:border-[var(--accent)] transition-colors"><Instagram size={24} className="text-[var(--accent)] mb-4" aria-hidden="true" /><h2 className="font-semibold mb-2">Instagram</h2><p className="text-sm text-[var(--text-secondary)] break-all">{CONTACT_DETAILS.instagram.label}</p><p className="text-xs text-[var(--text-secondary)] mt-3">Visit our profile <span aria-hidden="true">&rarr;</span></p></a>
+      </div>
+      <div className="max-w-2xl mx-auto rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] p-5 sm:p-8">
+        <h2 className="text-xl font-semibold mb-2">Send us a message</h2><p id="contact-help" className="text-sm text-[var(--text-secondary)] mb-6">Prepare your message here, then open WhatsApp to review and send it.</p>
+        <form onSubmit={prepareMessage} aria-describedby="contact-help" className="space-y-5">
+          <div className="grid sm:grid-cols-2 gap-4"><Input label="Name" autoComplete="name" value={name} onChange={event => update(setName, event.target.value)} placeholder="Your name" required /><Input label="Email" autoComplete="email" type="email" value={email} onChange={event => update(setEmail, event.target.value)} placeholder="you@studio.com" required /></div>
+          <Input label="Subject (optional)" value={subject} onChange={event => update(setSubject, event.target.value)} placeholder="How can we help?" />
+          <div className="space-y-1.5"><label htmlFor="contact-message" className="block text-sm font-medium text-[var(--text-secondary)]">Message</label><textarea id="contact-message" rows={5} value={message} onChange={event => update(setMessage, event.target.value)} placeholder="Tell us more..." required className="w-full px-4 py-2.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] outline-none resize-y" /></div>
+          <Button type="submit" className="w-full gap-2" size="lg"><MessageCircle size={18} aria-hidden="true" />Prepare WhatsApp message</Button>
+        </form>
+        {draft && <div role="status" className="mt-5 p-4 rounded-xl bg-[var(--bg-tertiary)]"><p className="text-sm mb-3">Your message is ready. Open WhatsApp to review and send it.</p><a href={draft} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--accent)] hover:underline">Open WhatsApp <ArrowRight size={16} aria-hidden="true" /></a></div>}
+      </div>
+    </div></section><Footer /></div>;
 }
 
 // LOGIN PAGE
 export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, googleLogin, authBusy } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading || authBusy) return;
     setError('');
     setLoading(true);
     try {
-      await login(email, password);
-      navigate('/dashboard');
+      await login(email.trim(), password);
+      navigate('/dashboard', { replace: true });
     } catch (err: any) {
       setError(err.message || 'Login failed. Please try again.');
     }
     setLoading(false);
   };
 
+  const handleGoogle = async () => {
+    if (loading || authBusy) return;
+    setError(''); setLoading(true);
+    try { await googleLogin(); navigate('/dashboard', { replace: true }); }
+    catch (error: any) { setError(error.message); }
+    finally { setLoading(false); }
+  };
+
   return (
-    <div className="relative isolate min-h-screen min-h-[100svh] flex items-center justify-center px-4 py-10 bg-[#10171b]">
-      <PageLoadingIndicator />
-      <AuthBackground />
-      <div className="page-load-sequence relative z-10 w-full max-w-md">
-        <div className="text-center mb-8">
-          <Link to="/" className="inline-flex items-center gap-2 mb-6">
-            <img src="/lumina-logo.jpg" alt="Kigalipix" className="w-10 h-10 rounded-xl object-contain" />
-          </Link>
-          <h1 className="text-2xl font-bold text-white drop-shadow-lg">Welcome back</h1>
-          <p className="text-white/80 mt-1">Sign in to your account</p>
+    <AuthLayout mode="login">
+      <Button type="button" variant="secondary" className="auth-google-button w-full gap-3" disabled={loading || authBusy} onClick={handleGoogle}><GoogleIcon />Continue with Google</Button>
+      <div className="auth-divider"><span>or continue with email</span></div>
+      <form onSubmit={handleSubmit} className="space-y-4" aria-busy={loading || authBusy}>
+        {error && <div role="alert" className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">{error}</div>}
+
+        <Input label="Email address" name="email" autoComplete="email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@studio.com" required disabled={loading || authBusy} />
+        <div className="relative">
+          <Input label="Password" name="password" autoComplete="current-password" type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} className="pr-12" placeholder="Enter your password" minLength={1} required disabled={loading || authBusy} />
+          <button type="button" className="absolute right-1 bottom-0.5 p-3 rounded-lg text-[var(--text-secondary)] hover:text-[var(--accent)]" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>
         </div>
-        <div className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-2xl p-8 shadow-[var(--shadow-md)]">
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">{error}</div>}
-            <Input label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" required />
-            <Input label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required />
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                <input type="checkbox" className="rounded border-[var(--border-color)]" /> Remember me
-              </label>
-              <Link to="/forgot-password" className="text-sm text-[var(--accent)] hover:underline">Forgot password?</Link>
-            </div>
-            <Button type="submit" className="w-full" size="lg" loading={loading}>Sign In</Button>
-          </form>
-          <div className="mt-6 text-center text-sm text-[var(--text-muted)]">
-            Don't have an account? <Link to="/register" className="text-[var(--accent)] hover:underline font-medium">Sign up</Link>
-          </div>
-        </div>
-      </div>
-    </div>
+        <div className="flex justify-end"><Link to="/forgot-password" className="text-sm text-[var(--accent)] hover:underline">Forgot password?</Link></div>
+        <Button type="submit" className="w-full gap-2" size="lg" loading={loading} disabled={authBusy}>Sign in to your studio <ArrowRight size={17} /></Button>
+      </form>
+      <p className="mt-6 text-center text-sm text-[var(--text-secondary)]">New to KigaliPix? <Link to="/register" className="text-[var(--accent)] hover:underline font-semibold">Create an account</Link></p>
+    </AuthLayout>
   );
 }
 
@@ -442,51 +409,53 @@ export function RegisterPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { register } = useAuth();
+  const { register, googleLogin, authBusy } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading || authBusy) return;
     setError('');
+    if (!name.trim()) { setError('Please enter your full name.'); return; }
     if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
     setLoading(true);
     try {
-      await register(email, password, name);
-      navigate('/dashboard');
+      await register(email.trim(), password, name.trim());
+      navigate('/dashboard', { replace: true });
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please try again.');
     }
     setLoading(false);
   };
 
+  const handleGoogle = async () => {
+    if (loading || authBusy) return;
+    setError(''); setLoading(true);
+    try { await googleLogin(); navigate('/dashboard', { replace: true }); }
+    catch (error: any) { setError(error.message); }
+    finally { setLoading(false); }
+  };
+
   return (
-    <div className="relative isolate min-h-screen min-h-[100svh] flex items-center justify-center px-4 py-10 bg-[#10171b]">
-      <PageLoadingIndicator />
-      <AuthBackground />
-      <div className="page-load-sequence relative z-10 w-full max-w-md">
-        <div className="text-center mb-8">
-          <Link to="/" className="inline-flex items-center gap-2 mb-6">
-            <img src="/lumina-logo.jpg" alt="Kigalipix" className="w-10 h-10 rounded-xl object-contain" />
-          </Link>
-          <h1 className="text-2xl font-bold text-white drop-shadow-lg">Create your account</h1>
-          <p className="text-white/80 mt-1">Start delivering beautiful galleries</p>
+    <AuthLayout mode="register">
+      <Button type="button" variant="secondary" className="auth-google-button w-full gap-3" disabled={loading || authBusy} onClick={handleGoogle}><GoogleIcon />Continue with Google</Button>
+      <div className="auth-divider"><span>or continue with email</span></div>
+      <form onSubmit={handleSubmit} className="space-y-4" aria-busy={loading || authBusy}>
+        {error && <div role="alert" className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">{error}</div>}
+        <Input label="Full name" name="name" autoComplete="name" value={name} onChange={e => setName(e.target.value)} placeholder="Your full name" required disabled={loading || authBusy} />
+        <Input label="Email address" name="email" autoComplete="email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@studio.com" required disabled={loading || authBusy} />
+        <div className="relative">
+          <Input label="Password" name="password" autoComplete="new-password" type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} className="pr-12" placeholder="At least 6 characters" minLength={6} required disabled={loading || authBusy} />
+          <button type="button" className="absolute right-1 bottom-0.5 p-3 rounded-lg text-[var(--text-secondary)] hover:text-[var(--accent)]" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>
         </div>
-        <div className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-2xl p-8 shadow-[var(--shadow-md)]">
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">{error}</div>}
-            <Input label="Full Name" value={name} onChange={e => setName(e.target.value)} placeholder="John Doe" required />
-            <Input label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" required />
-            <Input label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Min 6 characters" required />
-            <Button type="submit" className="w-full" size="lg" loading={loading}>Create Account</Button>
-          </form>
-          <div className="mt-6 text-center text-sm text-[var(--text-muted)]">
-            Already have an account? <Link to="/login" className="text-[var(--accent)] hover:underline font-medium">Sign in</Link>
-          </div>
-        </div>
-      </div>
-    </div>
+        <p className="text-xs text-[var(--text-secondary)]">Use at least 6 characters for your password.</p>
+        <Button type="submit" className="w-full gap-2" size="lg" loading={loading} disabled={authBusy}>Create free account <ArrowRight size={17} /></Button>
+      </form>
+      <p className="mt-6 text-center text-sm text-[var(--text-secondary)]">Already have an account? <Link to="/login" className="text-[var(--accent)] hover:underline font-semibold">Sign in</Link></p>
+    </AuthLayout>
   );
 }
 

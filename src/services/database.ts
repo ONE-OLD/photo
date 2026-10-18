@@ -7,47 +7,9 @@ import type { Database } from 'firebase/database';
 export const MTN_MOMO_MERCHANT_CODE = '678879';
 export const MTN_MOMO_USSD_DIAL = '*182*8*1*678879#';
 
-export type PlanId = 'free' | 'basic' | 'pro' | 'enterprise';
-
-export interface SubscriptionPlan {
-  id: PlanId;
-  name: string;
-  priceRwf: number;      // editable by admin (changing-price page)
-  storageGb: number;     // storage quota in GB
-  maxClients: number;    // maximum number of clients allowed
-  maxGalleries: number;  // maximum number of galleries allowed
-  features: string[];
-  popular?: boolean;
-}
-
-// Default tiers – Free 1GB, Basic 5GB/5000RWF, Pro 10GB/10000RWF, Enterprise 100GB/50000RWF
-export const DEFAULT_PLANS: SubscriptionPlan[] = [
-  {
-    id: 'free', name: 'Free', priceRwf: 0, storageGb: 1, maxClients: 5, maxGalleries: 10,
-    features: ['1 GB storage', 'Up to 5 clients', 'Up to 10 galleries', 'Password-protected galleries', 'Client favorites & comments'],
-  },
-  {
-    id: 'basic', name: 'Basic', priceRwf: 5000, storageGb: 5, maxClients: 25, maxGalleries: 50,
-    features: ['5 GB storage', 'Up to 25 clients', 'Up to 50 galleries', 'Custom branding', 'Priority email support'],
-    popular: true,
-  },
-  {
-    id: 'pro', name: 'Pro', priceRwf: 10000, storageGb: 10, maxClients: 100, maxGalleries: 200,
-    features: ['10 GB storage', 'Up to 100 clients', 'Up to 200 galleries', 'Advanced analytics', 'Priority support'],
-  },
-  {
-    id: 'enterprise', name: 'Enterprise', priceRwf: 50000, storageGb: 100, maxClients: -1, maxGalleries: -1,
-    features: ['100 GB storage', 'Unlimited clients', 'Unlimited galleries', 'White-label sharing', 'Dedicated support'],
-  },
-];
-
-export function getPlanById(plans: SubscriptionPlan[], planId?: string): SubscriptionPlan {
-  return plans.find(p => p.id === planId) || plans.find(p => p.id === 'free') || DEFAULT_PLANS[0];
-}
-
-export function formatRwf(amount: number): string {
-  return `${amount.toLocaleString('en-US')} RWF`;
-}
+export { DEFAULT_PLANS, getPlanById, formatRwf } from './pricing';
+export type { PlanId, SubscriptionPlan, BillingCycle } from './pricing';
+import { getPlanById, formatRwf, normalizePlans, validatePlans, addCalendarMonths, paymentDuration, validatePaymentQuote, type PlanId, type SubscriptionPlan, type BillingCycle } from './pricing';
 
 export interface PaymentRecord {
   id: string;
@@ -56,6 +18,10 @@ export interface PaymentRecord {
   planId: PlanId;
   planName: string;
   amountRwf: number;
+  billingCycle?: BillingCycle;
+  durationMonths?: number;
+  baseAmountRwf?: number;
+  discountPercent?: number;
   method: 'mtn-momo';
   status: 'pending' | 'confirmed' | 'rejected';
   payerNumber?: string;   // the MoMo number the photographer paid from
@@ -475,41 +441,19 @@ export const database = {
   // ─── Subscription plans / pricing ────────────────────────────────────────
   async getPlans(): Promise<SubscriptionPlan[]> {
     const snapshot = await get(ref(db, 'pricing'));
-    const stored = snapshot.val();
-    const storedArr: any[] = Array.isArray(stored) ? stored : (stored && typeof stored === 'object' ? Object.values(stored) : []);
-    // Merge stored overrides onto defaults so new plan fields never go missing
-    return DEFAULT_PLANS.map(def => {
-      const s = storedArr.find((p: any) => p.id === def.id);
-      return s ? { ...def, priceRwf: Number(s.priceRwf ?? def.priceRwf), storageGb: Number(s.storageGb ?? def.storageGb), maxClients: Number(s.maxClients ?? def.maxClients), maxGalleries: Number(s.maxGalleries ?? def.maxGalleries), name: s.name || def.name } : { ...def };
-    });
+    return normalizePlans(snapshot.val());
   },
 
   async savePlans(plans: SubscriptionPlan[]) {
-    const cleaned = plans.map(p => ({
-      ...p,
-      priceRwf: Math.max(0, Number(p.priceRwf) || 0),
-      storageGb: Math.max(0, Number(p.storageGb) || 0),
-      maxClients: Number(p.maxClients),
-      maxGalleries: Number(p.maxGalleries),
-    }));
+    validatePlans(plans);
+    const cleaned = normalizePlans(plans);
     await set(ref(db, 'pricing'), cleaned);
-    this.logActivity('pricing_updated', 'Subscription pricing was updated');
+    void this.logActivity('pricing_updated', 'Subscription pricing was updated');
     return cleaned;
   },
 
-  subscribeToPlans(callback: (plans: SubscriptionPlan[]) => void) {
-    const pricingRef = ref(db, 'pricing');
-    const handler = (snapshot: any) => {
-      const stored = snapshot.val();
-      if (!stored) { callback(DEFAULT_PLANS.map(p => ({ ...p }))); return; }
-      const storedArr: any[] = Array.isArray(stored) ? stored : (stored && typeof stored === 'object' ? Object.values(stored) : []);
-      callback(DEFAULT_PLANS.map(def => {
-        const s = storedArr.find((p: any) => p.id === def.id);
-        return s ? { ...def, priceRwf: Number(s.priceRwf ?? def.priceRwf), storageGb: Number(s.storageGb ?? def.storageGb), maxClients: Number(s.maxClients ?? def.maxClients), maxGalleries: Number(s.maxGalleries ?? def.maxGalleries), name: s.name || def.name } : { ...def };
-      }));
-    };
-    onValue(pricingRef, handler);
-    return () => off(pricingRef, 'value', handler);
+  subscribeToPlans(callback: (plans: SubscriptionPlan[]) => void, onError?: (error: Error) => void) {
+    return onValue(ref(db, 'pricing'), snapshot => callback(normalizePlans(snapshot.val())), onError);
   },
 
   // ─── Usage & quota enforcement ───────────────────────────────────────────
@@ -580,9 +524,10 @@ export const database = {
   // ─── Manual MTN MoMo payments ────────────────────────────────────────────
   async createPayment(payment: Omit<PaymentRecord, 'id' | 'createdAt' | 'status'>): Promise<PaymentRecord> {
     const id = generateId();
+    validatePaymentQuote(payment);
     const record: PaymentRecord = { ...payment, id, status: 'pending', createdAt: new Date().toISOString() };
     await set(ref(db, `payments/${id}`), record);
-    this.logActivity('payment_initiated', `${record.userEmail} started MoMo payment for ${record.planName} (${formatRwf(record.amountRwf)})`);
+    void this.logActivity('payment_initiated', `${record.userEmail} started MoMo payment for ${record.planName} (${formatRwf(record.amountRwf)})`);
     return record;
   },
 
@@ -601,26 +546,53 @@ export const database = {
   },
 
   async setPaymentStatus(id: string, status: 'confirmed' | 'rejected') {
-    await update(ref(db, `payments/${id}`), { status, ...(status === 'confirmed' ? { confirmedAt: new Date().toISOString() } : {}) });
+    const adminUid = currentUid();
+    const admin = await this.getUserProfile(adminUid);
+    if (admin?.role !== 'admin') throw new Error('Admin access is required to review payments.');
     const snapshot = await get(ref(db, `payments/${id}`));
-    return snapshot.val();
+    const payment = snapshot.val() as PaymentRecord | null;
+    if (!payment) throw new Error('Payment not found.');
+    if (payment.status === status) return payment;
+    if (payment.status !== 'pending') throw new Error('This payment was already reviewed. Reload the payment list.');
+    const now = new Date();
+    const changes: Record<string, unknown> = { [`payments/${id}/status`]: status };
+    if (status === 'confirmed') {
+      validatePaymentQuote(payment);
+      const months = paymentDuration(payment);
+      const existing = await this.getUserProfile(payment.userId);
+      if (!existing) throw new Error('The payer profile no longer exists.');
+      const oldExpiry = existing.subscriptionExpiresAt ? new Date(existing.subscriptionExpiresAt) : null;
+      const start = existing.subscriptionPlan === payment.planId && oldExpiry && oldExpiry.getTime() > now.getTime() ? oldExpiry : now;
+      changes[`payments/${id}/confirmedAt`] = now.toISOString();
+      changes[`users/${payment.userId}/subscriptionPlan`] = payment.planId;
+      changes[`users/${payment.userId}/subscriptionGrantedAt`] = now.toISOString();
+      changes[`users/${payment.userId}/subscriptionExpiresAt`] = addCalendarMonths(start, months).toISOString();
+      changes[`users/${payment.userId}/subscriptionNote`] = `MoMo payment ${payment.reference || id}: ${payment.planName}, ${months} month(s), ${formatRwf(payment.amountRwf)}`;
+    }
+    // Record review and activation together: neither can succeed alone.
+    await update(ref(db), changes);
+    return { ...payment, status };
   },
 
   // Admin grants (or revokes) a subscription plan to a user
   async grantSubscription(adminUid: string, targetUid: string, planId: PlanId, months: number, note?: string) {
+    if (adminUid !== currentUid() || (await this.getUserProfile(adminUid))?.role !== 'admin') throw new Error('Admin access is required to manage subscriptions.');
+    if (!['free', 'basic', 'pro', 'enterprise'].includes(planId)) throw new Error('Choose an existing plan.');
+    if (!Number.isSafeInteger(months) || months < 0 || (planId === 'free' && months !== 0)) throw new Error('Choose a valid duration.');
     const existing = await this.getUserProfile(targetUid);
+    if (!existing) throw new Error('This account no longer exists.');
     const now = new Date();
-    const expires = new Date(now.getTime());
-    if (months > 0) expires.setMonth(expires.getMonth() + months);
+    const expires = addCalendarMonths(now, months);
+    if (months > 0 && !Number.isFinite(expires.getTime())) throw new Error('Choose a valid duration.');
     const data: Partial<UserProfile> = {
       subscriptionPlan: planId,
       subscriptionGrantedAt: now.toISOString(),
       subscriptionExpiresAt: months > 0 ? expires.toISOString() : '',
       subscriptionNote: note || '',
     };
-    await this.updateUserProfile(targetUid, data);
-    this.logActivity('subscription_granted', `Subscription "${planId}" granted to ${existing?.email || targetUid}${months > 0 ? ` for ${months} month(s)` : ''} by admin ${adminUid}`);
-    return this.getUserProfile(targetUid);
+    await update(ref(db, `users/${targetUid}`), data);
+    void this.logActivity('subscription_granted', `Subscription "${planId}" granted to ${existing?.email || targetUid}${months > 0 ? ` for ${months} month(s)` : ''} by admin ${adminUid}`).catch(() => {});
+    return { ...existing, ...data };
   },
 
   // Realtime listeners
