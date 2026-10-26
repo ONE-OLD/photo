@@ -25,7 +25,7 @@ function PublicNav() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <Link to="/" className="flex items-center gap-2">
-            <img src="/lumina-logo.jpg" alt="" className="w-8 h-8 rounded-lg object-contain" />
+            <img src="/kigalipix.png" alt="" className="w-8 h-8 rounded-lg object-contain" />
             <span className="font-bold text-lg text-[var(--text-primary)]">Kigalipix</span>
           </Link>
           <div className="hidden md:flex items-center gap-8">
