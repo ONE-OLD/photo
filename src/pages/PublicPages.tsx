@@ -66,7 +66,7 @@ function Footer() {
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-8">
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-2 mb-4">
-              <img src="/lumina-logo.jpg" alt="" className="w-8 h-8 rounded-lg object-contain" />
+              <img src="kigalipix.png" alt="" className="w-8 h-8 rounded-lg object-contain" />
               <span className="font-bold text-lg">Kigalipix</span>
             </div>
             <p className="text-sm text-[var(--text-muted)]">Professional photography gallery platform for delivering stunning client experiences.</p>
@@ -481,7 +481,7 @@ export function ForgotPasswordPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-6">
-            <img src="/lumina-logo.jpg" alt="Kigalipix" className="w-10 h-10 rounded-xl object-contain" />
+            <img src="kigalipix.png" alt="Kigalipix" className="w-10 h-10 rounded-xl object-contain" />
           </Link>
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">Reset Password</h1>
           <p className="text-[var(--text-muted)] mt-1">Enter your email to receive a reset link</p>
