@@ -14,7 +14,7 @@ const CONTACT_DETAILS = {
     { label: '0792575986', href: 'tel:+250792575986' },
     { label: '0796395652', href: 'tel:+250796395652' },
   ],
-  instagram: { label: '@dreammakerdevelopers', href: 'https://www.instagram.com/dreammakerdevelopers/' },
+  instagram: { label: '@kigalipix', href: 'https://www.instagram.com/kigalipix/' },
 };
 
 // Navbar for public pages
