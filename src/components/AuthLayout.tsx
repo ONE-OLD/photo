@@ -23,7 +23,7 @@ export function AuthLayout({ mode, children }: { mode: 'login' | 'register'; chi
     </aside>
     <section className="auth-form-panel" aria-labelledby="auth-title">
       <div className="flex items-center justify-between gap-3 mb-8"><Link to="/" className="inline-flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--accent)]"><ArrowLeft size={15} />Back to home</Link><ThemeToggle /></div>
-      <div className="auth-form-content"><Link to="/" className="lg:hidden inline-flex items-center gap-2 mb-7 font-semibold"><img src="/lumina-logo.jpg" alt="" className="w-9 h-9 rounded-lg object-contain" />KigaliPix</Link>
+      <div className="auth-form-content"><Link to="/" className="lg:hidden inline-flex items-center gap-2 mb-7 font-semibold"><img src="/kigalipix.png" alt="" className="w-9 h-9 rounded-lg object-contain" />KigaliPix</Link>
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent)] mb-3">{signingUp ? 'Start your next chapter' : 'Your studio awaits'}</p>
         <h1 id="auth-title" className="text-3xl sm:text-4xl font-semibold tracking-tight">{signingUp ? 'Create your account' : 'Welcome back'}</h1>
         <p className="text-sm text-[var(--text-secondary)] mt-3 mb-7 leading-relaxed">{signingUp ? 'A little less admin. More room to create. Start with a free account.' : 'Sign in to your studio and pick up where you left off.'}</p>
