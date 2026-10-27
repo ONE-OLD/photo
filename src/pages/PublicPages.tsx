@@ -299,9 +299,9 @@ export function AboutPage() {
             </div>
             <div className="grid sm:grid-cols-3 gap-6 mt-10">
               {[
-                { value: '10K+', label: 'Photographers' },
-                { value: '500K+', label: 'Galleries Delivered' },
-                { value: '50M+', label: 'Photos Shared' },
+                { value: '30+', label: 'Photographers' },
+                { value: '41+', label: 'Galleries Delivered' },
+                { value: '300+', label: 'Photos Shared' },
               ].map((stat, i) => (
                 <div key={i} className="text-center bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl p-6">
                   <div className="text-3xl font-bold text-[var(--accent)]">{stat.value}</div>
