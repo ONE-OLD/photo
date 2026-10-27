@@ -14,7 +14,7 @@ const CONTACT_DETAILS = {
     { label: '0792575986', href: 'tel:+250792575986' },
     { label: '0796395652', href: 'tel:+250796395652' },
   ],
-  instagram: { label: '@kigalipix', href: 'https://www.instagram.com/kigalipix/' },
+  instagram: { label: '@kigalipix.app', href: 'https://www.instagram.com/kigalipix.app/' },
 };
 
 // Navbar for public pages
