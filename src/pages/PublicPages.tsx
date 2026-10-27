@@ -102,7 +102,7 @@ function Footer() {
           </div>
         </div>
         <div className="mt-10 pt-6 border-t border-[var(--border-color)] text-center text-sm text-[var(--text-muted)]">
-          © {new Date().getFullYear()} Kigalipix. All rights reserved. <br>Powered By DMD LTD.
+          © {new Date().getFullYear()} Kigalipix. All rights reserved. <br>Powered By DMD LTD.</br>
         </div>
       </div>
     </footer>
